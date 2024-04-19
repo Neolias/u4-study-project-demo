@@ -6,28 +6,47 @@
 
 ## Controls
 WASD - Movement
+
 Shift - Sprint
+
 Shift + Ctrl - Slide
+
 Ctrl - Crouch
+
 Ctrl + Ctrl - Prone
+
 Space - Jump / Swim Up and Down / UnCrouch / UnProne / Mantle / Use Ladders and Ziplines
+
 RMB - Aim
+
 LMB - Shoot (Can shoot only while aiming)
+
 Scroll Wheel - Change Weapons
+
 Q - Toggle Primary Item (Grenade)
+
 Q + LMB - Throw Grenade
+
 E - Change Weapon Modes (Currently only Rifle has modes)
+
 R - Reload Current Weapon
+
 L - Reload Current Level
 
 ## Advanced
 P - Toggle NavMesh
+
 ' - Toggle AI Debugger
+
 ' + Ä - Toggle Precision System Debugger
+
 Ö - Open Console
 
 ## Console Commands
 EnableDebugCategory CharacterAttributes 1
+
 EnableDebugCategory AIAttributes 1
+
 EnableDebugCategory RangedWeapon 1
+
 EnableDebugCategory MeleeWeapon 1
