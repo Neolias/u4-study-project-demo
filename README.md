@@ -33,15 +33,6 @@ R - Reload Current Weapon
 
 L - Reload Current Level
 
-## Advanced
-P - Toggle NavMesh
-
-' - Toggle AI Debugger
-
-' + Ä - Toggle Precision System Debugger
-
-Ö - Open Console
-
 ## Console Commands
 EnableDebugCategory CharacterAttributes 1
 
