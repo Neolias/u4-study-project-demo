@@ -9,13 +9,13 @@ WASD - Movement
 
 Shift - Sprint
 
-Shift + Ctrl - Slide
+Shift + Ctrl (or Ctrl if sprinting) - Slide
 
-Ctrl - Crouch
+Ctrl - Crouch / Swim Down
 
-Ctrl + Ctrl - Prone
+Ctrl + Ctrl (or Ctrl if crouching) - Prone
 
-Space - Jump / Swim Up and Down / UnCrouch / UnProne / Mantle / Use Ladders and Ziplines
+Space - Jump / Swim Up / UnCrouch / UnProne / Mantle / Use Ladders and Ziplines
 
 RMB - Aim
 
@@ -25,7 +25,7 @@ Scroll Wheel - Change Weapons
 
 Q - Toggle Primary Item (Grenade)
 
-Q + LMB - Throw Grenade
+Q + LMB (or LMB if equipped)- Throw Grenade
 
 E - Change Weapon Modes (Currently only Rifle has modes)
 
