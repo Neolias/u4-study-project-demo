@@ -4,7 +4,7 @@
 
  [![Link](https://img.youtube.com/vi/TFxdaA3Rt28/0.jpg)](https://www.youtube.com/watch?v=TFxdaA3Rt28)
 
-Update: Now replication is added for most mechanics ([[See changes here]]([https://www.youtube.com/watch?v=TFxdaA3Rt28](https://github.com/Neolias/u4-study-project-demo/commit/58cf7afe0aa1f4a7bbbfac04d3d44b0647f1b81a)) 
+Update: Now replication is added for most mechanics. ([See changes here](https://github.com/Neolias/u4-study-project-demo/commit/58cf7afe0aa1f4a7bbbfac04d3d44b0647f1b81a)) 
 
 ## Controls
 WASD - Movement
