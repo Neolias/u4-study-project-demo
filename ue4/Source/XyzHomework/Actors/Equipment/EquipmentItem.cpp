@@ -5,6 +5,11 @@
 
 #include "Characters/XyzBaseCharacter.h"
 
+AEquipmentItem::AEquipmentItem()
+{
+	SetReplicates(true);
+}
+
 void AEquipmentItem::SetOwner(AActor* NewOwner)
 {
 	Super::SetOwner(NewOwner);
@@ -13,6 +18,10 @@ void AEquipmentItem::SetOwner(AActor* NewOwner)
 	{
 		checkf(GetOwner()->IsA<AXyzBaseCharacter>(), TEXT("EquipmentItem object should be owned by AXyzBaseCharacter."))
 			CachedBaseCharacterOwner = StaticCast<AXyzBaseCharacter*>(GetOwner());
+		if (GetLocalRole() == ROLE_Authority)
+		{
+			SetAutonomousProxy(true);
+		}
 	}
 	else
 	{

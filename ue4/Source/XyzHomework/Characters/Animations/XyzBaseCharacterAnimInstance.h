@@ -49,6 +49,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character | Animation")
 	bool bIsReloading = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character | Animation")
+	bool bIsPrimaryItemEquipped = false;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character | Animation")
 	FVector Velocity = FVector::ZeroVector; 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character | Animation", meta = (UIMin = -180.f, UIMax = 180.f))
 	float MovementDirection = 0.f;

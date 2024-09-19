@@ -18,9 +18,11 @@ UCLASS()
 class XYZHOMEWORK_API UXyzBaseCharMovementComponent : public UCharacterMovementComponent
 {
 	GENERATED_BODY()
+	friend class FSavedMove_XyzCharacter;
 
 public:
 	virtual void BeginPlay() override;
+	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 
 	bool IsSprinting() const { return bIsSprinting; }
 	bool IsProne() const { return bIsProne; }
@@ -47,9 +49,15 @@ public:
 	// Sprinting / Sliding
 
 	void StartSprint();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StartSprint();
 	void StopSprint();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StopSprint();
 	bool CanSlide() const;
 	void StartSlide();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StartSlide();
 	void StopSlide();
 
 	// Crouching
@@ -84,6 +92,7 @@ public:
 	void DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod DetachFromRunnableWallMethod);
 
 protected:
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual float GetMaxSpeed() const override;
@@ -224,4 +233,29 @@ private:
 	void EndWallRun();
 	bool UpdateWallRunVelocity(FHitResult& HitResult);
 	void PhysWallRun(float DeltaTime, int32 Iterations);
+};
+
+class FSavedMove_XyzCharacter : public FSavedMove_Character
+{
+	typedef FSavedMove_Character Super;
+
+public:
+	virtual void Clear() override;
+	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override;
+	virtual bool CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* InCharacter, float MaxDelta) const override;
+	virtual void PrepMoveFor(ACharacter* Character) override;
+	virtual uint8 GetCompressedFlags() const override;
+
+	uint8 bSavedIsSprinting : 1;
+	uint8 bSavedIsMantling : 1;
+	uint8 bSavedIsPressingSlide : 1;
+};
+
+class FNetworkPredictionData_Client_XyzCharacter : public FNetworkPredictionData_Client_Character
+{
+	typedef FNetworkPredictionData_Client_Character Super;
+public:
+	FNetworkPredictionData_Client_XyzCharacter(const UCharacterMovementComponent& ClientMovement);
+
+	virtual FSavedMovePtr AllocateNewMove() override;
 };

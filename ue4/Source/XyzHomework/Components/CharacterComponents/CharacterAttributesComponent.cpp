@@ -11,13 +11,14 @@
 #include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
 #include "DamageTypes/Weapons/BulletDamageType.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 #include "Subsystems/DebugSubsystem.h"
 
 UCharacterAttributesComponent::UCharacterAttributesComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	SetIsReplicatedByDefault(true);
 }
-
 
 void UCharacterAttributesComponent::BeginPlay()
 {
@@ -35,6 +36,14 @@ void UCharacterAttributesComponent::BeginPlay()
 	CachedBaseCharacter->OnTakeAnyDamage.AddDynamic(this, &UCharacterAttributesComponent::OnDamageTaken);
 }
 
+void UCharacterAttributesComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UCharacterAttributesComponent, CurrentHealth);
+	DOREPLIFETIME(UCharacterAttributesComponent, CurrentStamina);
+	DOREPLIFETIME(UCharacterAttributesComponent, CurrentOxygen);
+}
+
 void UCharacterAttributesComponent::TickComponent(const float DeltaTime, const ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -47,6 +56,15 @@ void UCharacterAttributesComponent::TickComponent(const float DeltaTime, const E
 #if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	DrawDebugAttributes();
 #endif
+}
+
+void UCharacterAttributesComponent::OnRep_CurrentHealth()
+{
+	if (OnHealthChanged.IsBound())
+	{
+		OnHealthChanged.Broadcast(CurrentHealth / MaxHealth);
+	}
+	TryTriggerDeath(true);
 }
 
 void UCharacterAttributesComponent::OnDamageTaken(AActor* DamagedActor, const float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
@@ -62,7 +80,7 @@ void UCharacterAttributesComponent::OnDamageTaken(AActor* DamagedActor, const fl
 	}
 }
 
-void UCharacterAttributesComponent::TryTriggerDeath(const UDamageType* DamageType)
+void UCharacterAttributesComponent::TryTriggerDeath(const UDamageType* DamageType, const bool bShouldPlayAnimation/* = false*/)
 {
 	if (!IsAlive())
 	{
@@ -70,7 +88,7 @@ void UCharacterAttributesComponent::TryTriggerDeath(const UDamageType* DamageTyp
 
 		if (OnDeathDelegate.IsBound())
 		{
-			if (DamageType->IsA<UPainVolumeDamageType>() || DamageType->IsA<UBulletDamageType>())
+			if (bShouldPlayAnimation || DamageType->IsA<UPainVolumeDamageType>() || DamageType->IsA<UBulletDamageType>())
 			{
 				OnDeathDelegate.Broadcast(true);
 			}
@@ -78,6 +96,19 @@ void UCharacterAttributesComponent::TryTriggerDeath(const UDamageType* DamageTyp
 			{
 				OnDeathDelegate.Broadcast(false);
 			}
+		}
+	}
+}
+
+void UCharacterAttributesComponent::TryTriggerDeath(const bool bShouldPlayAnimation)
+{
+	if (!IsAlive())
+	{
+		bIsDeathTriggered = true;
+
+		if (OnDeathDelegate.IsBound())
+		{
+			OnDeathDelegate.Broadcast(bShouldPlayAnimation);
 		}
 	}
 }

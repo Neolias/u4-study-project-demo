@@ -40,6 +40,7 @@ void UXyzBaseCharacterAnimInstance::NativeUpdateAnimation(const float DeltaSecon
 	bIsOutOfStamina = CachedBaseCharacter->GetCharacterAttributesComponent()->IsOutOfStamina();
 
 	const UCharacterEquipmentComponent* CharacterEquipmentComponent = CachedBaseCharacter->GetCharacterEquipmentComponent();
+	bIsPrimaryItemEquipped = CharacterEquipmentComponent->IsPrimaryItemEquipped();
 	CurrentRangedWeaponType = CharacterEquipmentComponent->GetCurrentRangedWeaponType();
 	Velocity = BaseCharMovementComponent->Velocity;
 	MovementDirection = CalculateDirection(BaseCharMovementComponent->Velocity, CachedBaseCharacter->GetActorRotation());
@@ -47,7 +48,7 @@ void UXyzBaseCharacterAnimInstance::NativeUpdateAnimation(const float DeltaSecon
 	CurrentWallRunSide = BaseCharMovementComponent->GetCurrentWallRunSide();
 	CharacterPitch = CachedBaseCharacter->GetActorRotation().Pitch;
 	CameraPitch = CalculateCameraPitch();
-	AimRotation = CachedBaseCharacter->GetBaseAimRotation();
+	AimRotation = CachedBaseCharacter->GetAimOffset();
 	if (bIsOnLadder)
 	{
 		LadderSpeedRatio = BaseCharMovementComponent->GetLadderSpeedRatio();

@@ -8,7 +8,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnExplostionEvent);
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class XYZHOMEWORK_API UExplosionComponent : public USceneComponent
 {
 	GENERATED_BODY()
@@ -35,6 +35,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Explosion | FX")
 	UParticleSystem* ExplosionVFX;
 
+	APawn* GetOwningPawn() const;
 	UFUNCTION()
 	void OnDamageTaken(AActor* DamagedActor, float Damage, const class UDamageType* DamageType_In, class AController* InstigatedBy, AActor* DamageCauser);
 };

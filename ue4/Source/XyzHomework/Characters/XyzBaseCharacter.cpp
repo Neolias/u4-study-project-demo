@@ -58,8 +58,6 @@ void AXyzBaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	CharacterEquipmentComponent->EquipFromDefaultItemSlot();
-
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AXyzBaseCharacter::OnCharacterCapsuleHit);
 	OnReachedJumpApex.AddDynamic(this, &AXyzBaseCharacter::UpdateJumpApexHeight);
 	LandedDelegate.AddDynamic(this, &AXyzBaseCharacter::OnCharacterLanded);
@@ -71,9 +69,12 @@ void AXyzBaseCharacter::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	TryToggleAiming();
 	TryToggleWeaponFire();
-	TryChangeSprintState();
+	if (IsLocallyControlled())
+	{
+		TryToggleAiming();
+		TryChangeSprintState();
+	}
 
 	UpdateSliding();
 
@@ -83,6 +84,13 @@ void AXyzBaseCharacter::Tick(const float DeltaSeconds)
 }
 
 // Overrides
+
+FRotator AXyzBaseCharacter::GetAimOffset()
+{
+	const FVector AimDirectionWorld = GetBaseAimRotation().Vector();
+	const FVector AimDirectionLocal = GetTransform().InverseTransformVector(AimDirectionWorld);
+	return AimDirectionLocal.ToOrientationRotator();
+}
 
 void AXyzBaseCharacter::PossessedBy(AController* NewController)
 {
@@ -168,35 +176,66 @@ bool AXyzBaseCharacter::CanAim()
 		&& !CharacterAttributesComponent->IsOutOfStamina() && GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
 }
 
+void AXyzBaseCharacter::SetWantsToAim()
+{
+	bWantsToAim = true;
+}
+
+void AXyzBaseCharacter::StartAiming()
+{
+	const AEquipmentItem* EquipmentItem = CharacterEquipmentComponent->GetCurrentEquipmentItem();
+	if (IsValid(EquipmentItem) && EquipmentItem->CanAimWithThisItem())
+	{
+		bIsAiming = true;
+		BaseCharacterMovementComponent->bOrientRotationToMovement = false;
+		bUseControllerRotationYaw = true;
+		CurrentAimingMovementSpeed = EquipmentItem->GetAimingWalkSpeed();
+		OnStartAiming();
+	}
+}
+
 void AXyzBaseCharacter::TryToggleAiming()
 {
 	const bool bCanAim = CanAim();
 
 	if (!bIsAiming && bCanAim)
 	{
-		const AEquipmentItem* EquipmentItem = CharacterEquipmentComponent->GetCurrentEquipmentItem();
-		if (IsValid(EquipmentItem) && EquipmentItem->CanAimWithThisItem())
+		StartAiming();
+		if (GetLocalRole() == ROLE_Authority)
 		{
-			bIsAiming = true;
-			BaseCharacterMovementComponent->bOrientRotationToMovement = false;
-			bUseControllerRotationYaw = true;
-			CurrentAimingMovementSpeed = EquipmentItem->GetAimingWalkSpeed();
-			OnStartAiming();
+			Multicast_StartAiming();
+		}
+		else if (GetLocalRole() == ROLE_AutonomousProxy)
+		{
+			Server_StartAiming();
 		}
 	}
 	else if (bIsAiming && !bCanAim)
 	{
-		bIsAiming = false;
-		BaseCharacterMovementComponent->bOrientRotationToMovement = true;
-		bUseControllerRotationYaw = false;
-		CurrentAimingMovementSpeed = BaseCharacterMovementComponent->MaxWalkSpeed;
-		OnStopAiming();
+		StopAiming();
+		if (GetLocalRole() == ROLE_Authority)
+		{
+			Multicast_StopAiming();
+		}
+		else if (GetLocalRole() == ROLE_AutonomousProxy)
+		{
+			Server_StopAiming();
+		}
 	}
 }
 
-void AXyzBaseCharacter::StartAim()
+void AXyzBaseCharacter::Server_StartAiming_Implementation()
 {
-	bWantsToAim = true;
+	StartAiming();
+	Multicast_StartAiming();
+}
+
+void AXyzBaseCharacter::Multicast_StartAiming_Implementation()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		StartAiming();
+	}
 }
 
 void AXyzBaseCharacter::OnStartAiming_Implementation()
@@ -212,9 +251,32 @@ void AXyzBaseCharacter::OnStartAimingInternal()
 	}
 }
 
-void AXyzBaseCharacter::StopAim()
+void AXyzBaseCharacter::ResetWantsToAim()
 {
 	bWantsToAim = false;
+}
+
+void AXyzBaseCharacter::StopAiming()
+{
+	bIsAiming = false;
+	BaseCharacterMovementComponent->bOrientRotationToMovement = true;
+	bUseControllerRotationYaw = false;
+	CurrentAimingMovementSpeed = BaseCharacterMovementComponent->MaxWalkSpeed;
+	OnStopAiming();
+}
+
+void AXyzBaseCharacter::Server_StopAiming_Implementation()
+{
+	Multicast_StopAiming();
+	StopAiming();
+}
+
+void AXyzBaseCharacter::Multicast_StopAiming_Implementation()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		StopAiming();
+	}
 }
 
 void AXyzBaseCharacter::OnStopAiming_Implementation()
@@ -244,7 +306,7 @@ void AXyzBaseCharacter::TryToggleWeaponFire()
 		return;
 	}
 
-	if (bWantsToFire && CanFireWeapon())
+	if (bWantsToFire && CanFireWeapon() && !CurrentRangedWeapon->IsReloading())
 	{
 		CurrentRangedWeapon->StartFire();
 	}
@@ -301,17 +363,49 @@ void AXyzBaseCharacter::StopWeaponFire()
 	}
 }
 
-void AXyzBaseCharacter::ReloadWeapon()
+void AXyzBaseCharacter::OnReloadStarted()
 {
 	CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
 	if (CurrentRangedWeapon.IsValid())
 	{
+		CurrentReloadingWalkSpeed = CurrentRangedWeapon->GetAimingWalkSpeed();
 		if (CharacterEquipmentComponent->CanReloadCurrentWeapon())
 		{
-			CurrentReloadingWalkSpeed = CurrentRangedWeapon->GetAimingWalkSpeed();
 			CurrentRangedWeapon->StartReload();
 		}
 	}
+}
+
+void AXyzBaseCharacter::ReloadWeapon()
+{
+	OnReloadStarted();
+	if (GetLocalRole() == ROLE_Authority)
+	{
+		Multicast_OnReloadStarted();
+	}
+	if (GetLocalRole() == ROLE_AutonomousProxy)
+	{
+		Server_OnReloadStarted();
+	}
+}
+
+void AXyzBaseCharacter::Server_OnReloadStarted_Implementation()
+{
+	OnReloadStarted();
+	Multicast_OnReloadStarted();
+}
+
+void AXyzBaseCharacter::Multicast_OnReloadStarted_Implementation()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		OnReloadStarted();
+	}
+}
+
+void AXyzBaseCharacter::Multicast_StartAutoReload_Implementation()
+{
+	OnReloadStarted();
 }
 
 void AXyzBaseCharacter::OnWeaponReloaded()
@@ -376,9 +470,9 @@ bool AXyzBaseCharacter::CanEquipPrimaryItem()
 		&& !BaseCharacterMovementComponent->IsProne() && !BaseCharacterMovementComponent->IsCrouching() && !CharacterEquipmentComponent->IsPrimaryItemEquipped();
 }
 
-void AXyzBaseCharacter::TogglePrimaryItem()
+void AXyzBaseCharacter::OnTogglePrimaryItem(const bool bCanEquip) const
 {
-	if (CanEquipPrimaryItem())
+	if (bCanEquip)
 	{
 		CharacterEquipmentComponent->EquipPrimaryItem();
 	}
@@ -388,24 +482,58 @@ void AXyzBaseCharacter::TogglePrimaryItem()
 	}
 }
 
+void AXyzBaseCharacter::TogglePrimaryItem()
+{
+	const bool bCanEquip = CanEquipPrimaryItem();
+	Server_OnTogglePrimaryItem(bCanEquip);
+}
+
+void AXyzBaseCharacter::Server_OnTogglePrimaryItem_Implementation(const bool bCanEquip)
+{
+	Multicast_OnTogglePrimaryItem(bCanEquip);
+}
+
+void AXyzBaseCharacter::Multicast_OnTogglePrimaryItem_Implementation(const bool bCanEquip)
+{
+	OnTogglePrimaryItem(bCanEquip);
+}
+
 bool AXyzBaseCharacter::CanThrowItem()
 {
 	return BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne() && !BaseCharacterMovementComponent->IsCrouching()
 		&& !BaseCharacterMovementComponent->IsSprinting() && !BaseCharacterMovementComponent->IsSliding() && !CharacterAttributesComponent->IsOutOfStamina()
-		&& GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics() && CharacterEquipmentComponent->CanThrowItem(CharacterEquipmentComponent->GetCurrentThrowableItem());
+		&& GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
+}
+
+void AXyzBaseCharacter::OnThrowItem()
+{
+	const AThrowableItem* CurrentThrowableItem = CharacterEquipmentComponent->GetCurrentThrowableItem();
+	if (IsValid(CurrentThrowableItem))
+	{
+		CurrentThrowItemMovementSpeed = CurrentThrowableItem->GetThrowingWalkSpeed();
+		if (GetLocalRole() == ROLE_Authority)
+		{
+			CharacterEquipmentComponent->ThrowItem();
+		}
+	}
 }
 
 void AXyzBaseCharacter::ThrowItem()
 {
 	if (CanThrowItem())
 	{
-		AThrowableItem* CurrentThrowableItem = CharacterEquipmentComponent->GetCurrentThrowableItem();
-		if (IsValid(CurrentThrowableItem))
-		{
-			CurrentThrowItemMovementSpeed = CurrentThrowableItem->GetThrowingWalkSpeed();
-			CurrentThrowableItem->Throw();
-		}
+		Server_ThrowItem();
 	}
+}
+
+void AXyzBaseCharacter::Server_ThrowItem_Implementation()
+{
+	Multicast_ThrowItem();
+}
+
+void AXyzBaseCharacter::Multicast_ThrowItem_Implementation()
+{
+	OnThrowItem();
 }
 
 void AXyzBaseCharacter::ActivateNextWeaponMode()
@@ -443,10 +571,13 @@ void AXyzBaseCharacter::OnHardLandStart()
 	}
 
 	bIsHardLanding = true;
-	if (XyzPlayerController.IsValid())
+
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
 	{
-		XyzPlayerController->SetIgnoreMoveInput(true);
+		CharacterController->SetIgnoreMoveInput(true);
 	}
+
 	UAnimInstance* AnimInstance = SkeletalMeshComponent->GetAnimInstance();
 	if (IsValid(AnimInstance))
 	{
@@ -459,9 +590,11 @@ void AXyzBaseCharacter::OnHardLandStart()
 void AXyzBaseCharacter::OnHardLandEnd()
 {
 	bIsHardLanding = false;
-	if (XyzPlayerController.IsValid())
+
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
 	{
-		XyzPlayerController->SetIgnoreMoveInput(false);
+		CharacterController->SetIgnoreMoveInput(false);
 	}
 }
 
@@ -469,13 +602,13 @@ void AXyzBaseCharacter::OnHardLandEnd()
 
 bool AXyzBaseCharacter::CanSprint()
 {
-	return bIsSprintRequested && BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne()
+	return BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne()
 		&& !CharacterAttributesComponent->IsOutOfStamina() && !IsAnimMontagePlaying();
 }
 
 void AXyzBaseCharacter::TryChangeSprintState()
 {
-	if (CanSprint())
+	if (bIsSprintRequested && CanSprint())
 	{
 		if (!BaseCharacterMovementComponent->IsSprinting())
 		{
@@ -487,14 +620,12 @@ void AXyzBaseCharacter::TryChangeSprintState()
 			if (!(BaseCharacterMovementComponent->IsCrouching() && !BaseCharacterMovementComponent->bWantsToCrouch))
 			{
 				BaseCharacterMovementComponent->StartSprint();
-				OnSprintStart();
 			}
 		}
 	}
 	else if (BaseCharacterMovementComponent->IsSprinting())
 	{
 		BaseCharacterMovementComponent->StopSprint();
-		OnSprintStop();
 	}
 }
 
@@ -562,11 +693,9 @@ void AXyzBaseCharacter::OnStartSlide(const float HalfHeightAdjust, const float S
 	}
 
 	CharacterEquipmentComponent->UnequipCurrentItem();
-
 	RecalculateBaseEyeHeight();
 
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-
 	if (IsValid(GetMesh()) && IsValid(DefaultChar->GetMesh()))
 	{
 		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
@@ -578,10 +707,12 @@ void AXyzBaseCharacter::OnStartSlide(const float HalfHeightAdjust, const float S
 		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z + HalfHeightAdjust;
 	}
 
-	if (XyzPlayerController.IsValid())
+
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
 	{
-		XyzPlayerController->SetIgnoreLookInput(true);
-		XyzPlayerController->SetIgnoreMoveInput(true);
+		CharacterController->SetIgnoreLookInput(true);
+		CharacterController->SetIgnoreMoveInput(true);
 	}
 
 	PlayAnimMontage(SlideAnimMontage);
@@ -595,7 +726,6 @@ void AXyzBaseCharacter::OnStopSlide(const float HalfHeightAdjust, const float Sc
 	}
 
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-
 	if (IsValid(GetMesh()) && IsValid(DefaultChar->GetMesh()))
 	{
 		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
@@ -607,10 +737,11 @@ void AXyzBaseCharacter::OnStopSlide(const float HalfHeightAdjust, const float Sc
 		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z;
 	}
 
-	if (XyzPlayerController.IsValid())
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
 	{
-		XyzPlayerController->SetIgnoreLookInput(false);
-		XyzPlayerController->SetIgnoreMoveInput(false);
+		CharacterController->SetIgnoreLookInput(false);
+		CharacterController->SetIgnoreMoveInput(false);
 	}
 }
 
@@ -824,7 +955,15 @@ void AXyzBaseCharacter::Mantle(const bool bForceMantle /*= false*/)
 			MantlingParameters.StartTime = FMath::GetMappedRangeValueClamped(SourceRange, TargetRange, MantlingHeight);
 			MantlingParameters.InitialAnimationLocation = MantlingParameters.TargetLocation - MantlingSettings.AnimationCorrectionZ * FVector::UpVector + MantlingSettings.AnimationCorrectionXY * LedgeDescription.LedgeNormal;
 
-			BaseCharacterMovementComponent->StartMantle(MantlingParameters);
+			if (GetLocalRole() == ROLE_Authority || IsLocallyControlled())
+			{
+				BaseCharacterMovementComponent->StartMantle(MantlingParameters);
+			}
+
+			if (GetLocalRole() == ROLE_Authority)
+			{
+				Multicast_Mantle(true);
+			}
 
 			if (IsValid(SkeletalMeshComponent))
 			{
@@ -833,6 +972,14 @@ void AXyzBaseCharacter::Mantle(const bool bForceMantle /*= false*/)
 				OnMantle(MantlingSettings, MantlingParameters);
 			}
 		}
+	}
+}
+
+void AXyzBaseCharacter::Multicast_Mantle_Implementation(const bool bForceMantle)
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		Mantle(bForceMantle);
 	}
 }
 

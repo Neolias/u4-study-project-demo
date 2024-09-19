@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "XyzGenericStructs.h"
 #include "Actors/Equipment/EquipmentItem.h"
 #include "Actors/Projectiles/XyzProjectile.h"
 #include "ThrowableItem.generated.h"
@@ -25,9 +26,10 @@ public:
 
 	AThrowableItem();
 	EWeaponAmmoType GetAmmoType() const { return AmmoType; }
+	TSubclassOf<AXyzProjectile> GetProjectileClass() const { return ProjectileClass; }
 	float GetThrowingWalkSpeed() const { return ThrowingWalkSpeed; }
 	bool IsThrowing() const { return bIsThrowing; }
-	void Throw();
+	void Throw(AXyzProjectile* ThrowableProjectile, const FVector ResetLocation);
 	void LaunchProjectile() const;
 
 protected:
@@ -49,9 +51,16 @@ protected:
 	float ThrowingWalkSpeed = 150.f;
 
 private:
+	FVector ProjectileResetLocation = FVector::ZeroVector;
+	TWeakObjectPtr<AXyzProjectile> CurrentProjectile;
 	FTimerHandle ThrowAnimationTimer;
 	bool bIsThrowing = false;
 
 	void OnThrowEnd() const;
 	void OnThrowAnimationFinished();
+	UFUNCTION()
+	void ProcessThrowableProjectileHit(AXyzProjectile* Projectile, const FVector MovementDirection, const FHitResult& HitResult, const FVector ResetLocation);
+	UFUNCTION()
+	void OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, const FVector ResetLocation);
+	void ResetThrowableProjectile(AXyzProjectile* Projectile, const FVector ResetLocation);
 };

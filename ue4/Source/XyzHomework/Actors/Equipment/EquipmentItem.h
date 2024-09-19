@@ -15,6 +15,7 @@ class XYZHOMEWORK_API AEquipmentItem : public AActor
 	GENERATED_BODY()
 
 public:
+	AEquipmentItem();
 	virtual void SetOwner(AActor* NewOwner) override;
 	EEquipmentItemType GetItemType() const { return EquipmentItemType; };
 	FName GetEquippedSocketName() const { return EquippedSocketName; }

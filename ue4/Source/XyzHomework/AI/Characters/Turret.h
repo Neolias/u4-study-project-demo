@@ -18,6 +18,7 @@ public:
 	ATurret();
 	virtual void Tick(float DeltaTime) override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	AActor* GetCurrentTarget() const { return CurrentTarget.Get(); }
 	void SetCurrentTarget(AActor* NewTarget);
 	void SetTurretMode(ETurretMode NewMode);
@@ -82,6 +83,7 @@ protected:
 
 private:
 	ETurretMode CurrentTurretMode = ETurretMode::Searching;
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentTargetSet)
 	TWeakObjectPtr<AActor> CurrentTarget;
 	FVector TargetLocation = FVector::ZeroVector;
 	float TurretMeshHeight = 0.f;
@@ -90,4 +92,13 @@ private:
 	void TrackEnemy(float DeltaTime);
 	UFUNCTION()
 	void OnDeath();
+	void OnCurrentTargetSet();
+	UFUNCTION()
+	void OnRep_CurrentTargetSet();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StartFire();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StopFire();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDeath();
 };

@@ -11,6 +11,15 @@ AExplosiveProjectile::AExplosiveProjectile()
 	ExplosionComponent->SetupAttachment(RootComponent);
 }
 
+void AExplosiveProjectile::Explode()
+{
+	ExplosionComponent->Explode(GetController());
+	if (OnProjectileExplosionEvent.IsBound())
+	{
+		OnProjectileExplosionEvent.Broadcast(this, ResetLocation);
+	}
+}
+
 void AExplosiveProjectile::OnProjectileLaunched()
 {
 	Super::OnProjectileLaunched();
@@ -21,13 +30,14 @@ void AExplosiveProjectile::OnProjectileLaunched()
 	}
 }
 
-void AExplosiveProjectile::OnDetonationTimerElapsed() const
+void AExplosiveProjectile::OnDetonationTimerElapsed()
 {
-	AController* Controller = GetController();
-	if (IsValid(Controller))
-	{
-		ExplosionComponent->Explode(Controller);
-	}
+	Multicast_OnDetonation();
+}
+
+void AExplosiveProjectile::Multicast_OnDetonation_Implementation()
+{
+	Explode();
 }
 
 AController* AExplosiveProjectile::GetController() const
@@ -42,9 +52,5 @@ void AExplosiveProjectile::OnCollisionComponentHit(UPrimitiveComponent* HitCompo
 	if (bShouldDetonateOnCollision)
 	{
 		OnDetonationTimerElapsed();
-	}
-	else
-	{
-		Super::OnCollisionComponentHit(HitComponent, OtherActor, OtherComp, NormalImpulse, Hit);
 	}
 }

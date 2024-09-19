@@ -27,9 +27,15 @@ APawn* UTurretMuzzleComponent::GetOwningPawn() const
 	return PawnOwner;
 }
 
-void UTurretMuzzleComponent::StartFire(AController* Controller)
+AController* UTurretMuzzleComponent::GetController() const
 {
-	GetWorld()->GetTimerManager().SetTimer(FireTimer, [=] {Shoot(Controller); }, 60.f / FireRate, true, FirstShotDelay);
+	const APawn* PawnOwner = GetOwningPawn();
+	return IsValid(PawnOwner) ? PawnOwner->GetController() : nullptr;
+}
+
+void UTurretMuzzleComponent::StartFire()
+{
+	GetWorld()->GetTimerManager().SetTimer(FireTimer, [=] {Shoot(GetController()); }, 60.f / FireRate, true, FirstShotDelay);
 }
 
 void UTurretMuzzleComponent::StopFire()
@@ -60,23 +66,6 @@ void UTurretMuzzleComponent::Shoot(AController* Controller) const
 			DrawDebugLine(GetWorld(), MuzzleLocation, HitResult.ImpactPoint, FColor::Red, false, 2.f, 0, 1.f);
 		}
 #endif
-
-		FPointDamageEvent DamageEvent;
-		DamageEvent.HitInfo = HitResult;
-		DamageEvent.ShotDirection = ShotDirection;
-		DamageEvent.DamageTypeClass = DamageTypeClass;
-		AActor* DamagedActor = HitResult.GetActor();
-		if (IsValid(DamagedActor))
-		{
-			float DamageFallOff = 0.f;
-			if (IsValid(WeaponDamageFallOff))
-			{
-				const float Distance = FVector::Dist(MuzzleLocation, HitResult.ImpactPoint);
-				DamageFallOff = WeaponDamageFallOff->GetFloatValue(Distance / WeaponRange);
-			}
-
-			DamagedActor->TakeDamage(WeaponMaxDamage * DamageFallOff, DamageEvent, Controller, GetOwner());
-		}
 
 		ProcessHit(HitResult.ImpactPoint - MuzzleLocation, HitResult);
 		TraceEnd = HitResult.ImpactPoint;
@@ -120,6 +109,12 @@ void UTurretMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitRes
 		}
 	}
 
+	APawn* PawnOwner = GetOwningPawn();
+	if (!IsValid(PawnOwner) || PawnOwner->GetLocalRole() != ROLE_Authority)
+	{
+		return;
+	}
+
 	FPointDamageEvent DamageEvent;
 	DamageEvent.HitInfo = HitResult;
 	DamageEvent.ShotDirection = MovementDirection;
@@ -134,17 +129,6 @@ void UTurretMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitRes
 			DamageFallOff = WeaponDamageFallOff->GetFloatValue(Distance / WeaponRange);
 		}
 
-		APawn* PawnOwner = GetOwningPawn();
-		if (!IsValid(PawnOwner))
-		{
-			return;
-		}
-		AController* Controller = PawnOwner->GetController();
-		if (IsValid(Controller))
-		{
-			DamagedActor->TakeDamage(WeaponMaxDamage * DamageFallOff, DamageEvent, Controller, PawnOwner);
-		}
+		DamagedActor->TakeDamage(WeaponMaxDamage * DamageFallOff, DamageEvent, GetController(), PawnOwner);
 	}
 }
-
-

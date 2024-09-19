@@ -15,7 +15,7 @@ class XYZHOMEWORK_API UTurretMuzzleComponent : public USceneComponent
 
 public:	
 	UTurretMuzzleComponent();
-	void StartFire(AController* Controller);
+	void StartFire();
 	void StopFire();
 
 protected:
@@ -46,6 +46,7 @@ private:
 	FTimerHandle FireTimer;
 
 	APawn* GetOwningPawn() const;
+	AController* GetController() const;
 	void Shoot(AController* Controller) const;
 	FVector GetShotDirection(FRotator MuzzleRotation) const;
 	void ProcessHit(FVector MovementDirection, const FHitResult& HitResult) const;		

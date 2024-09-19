@@ -17,6 +17,7 @@ class AInteractiveActor;
 typedef TArray<AInteractiveActor*, TInlineAllocator<10>> TInteractiveActorsArray;
 class AZipline;
 class ALadder;
+class AEquipmentItem;
 
 /**
  *
@@ -28,7 +29,7 @@ class XYZHOMEWORK_API AXyzBaseCharacter : public ACharacter, public IGenericTeam
 
 public:
 	FOnAimingStateChanged OnAimingStateChanged;
-
+	bool bIsSprintRequested = false;
 	explicit AXyzBaseCharacter(const OUT FObjectInitializer& ObjectInitializer);
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -43,6 +44,8 @@ public:
 	float GetIKRightFootOffset() const { return IKRightFootOffset; }
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	float GetIKPelvisOffset() const { return IKPelvisOffset; }
+
+	virtual FRotator GetAimOffset();
 
 	// Overrides
 
@@ -65,8 +68,8 @@ public:
 	void SetIsAiming(const bool bIsAiming_In) { bIsAiming = bIsAiming_In; }
 	float GetCurrentAimingMovementSpeed() const { return CurrentAimingMovementSpeed; }
 	virtual bool CanAim();
-	virtual void StartAim();
-	virtual void StopAim();
+	virtual void SetWantsToAim();
+	virtual void ResetWantsToAim();
 	UFUNCTION(BlueprintNativeEvent, Category = "XYZ Character | Shooting")
 	void OnStartAiming();
 	UFUNCTION(BlueprintNativeEvent, Category = "XYZ Character | Shooting")
@@ -81,6 +84,8 @@ public:
 	float GetCurrentReloadingWalkSpeed() const { return CurrentReloadingWalkSpeed; }
 	virtual void ReloadWeapon();
 	virtual void OnWeaponReloaded();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_StartAutoReload();
 
 	// Melee weapons
 
@@ -108,6 +113,7 @@ public:
 
 	// Sprinting / Sliding
 
+	virtual bool CanSprint();
 	virtual void StartSprint();
 	virtual void StopSprint();
 	UFUNCTION(BlueprintNativeEvent, Category = "XYZ Character | Movement")
@@ -132,6 +138,8 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	virtual void Mantle(bool bForceMantle = false);
+	UFUNCTION(NetMulticast, Reliable)
+	virtual void Multicast_Mantle(bool bForceMantle = false);
 
 	// Interactive Actors
 
@@ -201,7 +209,6 @@ protected:
 	TWeakObjectPtr<class ARangedWeaponItem> CurrentRangedWeapon;
 	TInteractiveActorsArray InteractiveActors;
 	FTimerHandle HardLandTimer;
-	bool bIsSprintRequested = false;
 	bool bIsHardLanding = false;
 	bool bIsFirstPerson = false;
 	bool bWantsToAim = false;
@@ -227,12 +234,44 @@ protected:
 
 	virtual bool IsAnimMontagePlaying();
 
-	// Shooting
+	// Aiming
+
 	virtual void TryToggleAiming();
+	virtual void StartAiming();
+	virtual void StopAiming();
 	virtual void OnStartAiming_Implementation();
 	virtual void OnStartAimingInternal();
 	virtual void OnStopAiming_Implementation();
 	virtual void OnStopAimingInternal();
+	UFUNCTION(Server, Reliable)
+	virtual void Server_StartAiming();
+	UFUNCTION(NetMulticast, Reliable)
+	virtual void Multicast_StartAiming();
+	UFUNCTION(Server, Reliable)
+	virtual void Server_StopAiming();
+	UFUNCTION(NetMulticast, Reliable)
+	virtual void Multicast_StopAiming();
+
+	// Reloading Weapons
+
+	void OnReloadStarted();
+	UFUNCTION(Server, Reliable)
+	void Server_OnReloadStarted();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnReloadStarted();
+
+	// Equipment Items
+
+	void OnTogglePrimaryItem(bool bCanEquip) const;
+	UFUNCTION(Server, Reliable)
+	void Server_OnTogglePrimaryItem(bool bCanEquip);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnTogglePrimaryItem(bool bCanEquip);
+	void OnThrowItem();
+	UFUNCTION(Server, Reliable)
+	void Server_ThrowItem();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ThrowItem();
 
 	// Jumping / Landing
 
@@ -245,7 +284,6 @@ protected:
 
 	// Sprinting / Sliding / OutOfStamina
 
-	virtual bool CanSprint();
 	virtual void TryChangeSprintState();
 	virtual void OnSprintStart_Implementation();
 	virtual void OnSprintStop_Implementation();

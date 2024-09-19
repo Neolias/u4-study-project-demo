@@ -16,7 +16,10 @@ void AXyzPlayerController::SetPawn(APawn* InPawn)
 	Super::SetPawn(InPawn);
 	//checkf(InPawn->IsA<AXyzBaseCharacter>(), TEXT("AXyzPlayerController::SetPawn() should be used only with AXyzBaseCharacter"))
 	CachedBaseCharacter = StaticCast<AXyzBaseCharacter*>(InPawn);
-	CreateAndInitializeHUDWidgets();
+	if (CachedBaseCharacter.IsValid() && CachedBaseCharacter->IsLocallyControlled())
+	{
+		CreateAndInitializeHUDWidgets();
+	}
 }
 
 bool AXyzPlayerController::IgnoresFPCameraPitch() const
@@ -308,7 +311,7 @@ void AXyzPlayerController::StartAim()
 {
 	if (CachedBaseCharacter.IsValid())
 	{
-		CachedBaseCharacter->StartAim();
+		CachedBaseCharacter->SetWantsToAim();
 	}
 }
 
@@ -316,7 +319,7 @@ void AXyzPlayerController::EndAim()
 {
 	if (CachedBaseCharacter.IsValid())
 	{
-		CachedBaseCharacter->StopAim();
+		CachedBaseCharacter->ResetWantsToAim();
 	}
 }
 

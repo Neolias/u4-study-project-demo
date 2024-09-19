@@ -10,14 +10,49 @@
 
 #include "DrawDebugHelpers.h"
 #include "XyzHomeworkTypes.h"
+#include "Actors/Projectiles/ExplosiveProjectile.h"
+#include "Net/UnrealNetwork.h"
 #include "Subsystems/DebugSubsystem.h"
 
 UWeaponMuzzleComponent::UWeaponMuzzleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+
+	SetIsReplicatedByDefault(true);
 }
 
-void UWeaponMuzzleComponent::Shoot(const FWeaponModeParameters* WeaponModeParameters, const FVector ViewPointLocation, const FRotator ViewPointRotation, AController* Controller)
+void UWeaponMuzzleComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	AActor* Owner = GetOwningPawn();
+	if (IsValid(Owner) && Owner->GetLocalRole() == ROLE_Authority)
+	{
+		InstantiateProjectilePools(Owner);
+	}
+}
+
+void UWeaponMuzzleComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UWeaponMuzzleComponent, ProjectilePools);
+}
+
+AController* UWeaponMuzzleComponent::GetController() const
+{
+	const APawn* PawnOwner = GetOwningPawn();
+	return IsValid(PawnOwner) ? PawnOwner->GetController() : nullptr;
+}
+
+void UWeaponMuzzleComponent::InstantiateProjectilePools(AActor* Owner)
+{
+	for (FProjectilePool& Pool : ProjectilePools)
+	{
+		Pool.InstantiatePool(GetWorld(), Owner);
+	}
+}
+
+void UWeaponMuzzleComponent::Shoot(const FWeaponModeParameters* WeaponModeParameters, const FVector ViewPointLocation, const FRotator ViewPointRotation)
 {
 	if (!WeaponModeParameters)
 	{
@@ -28,23 +63,28 @@ void UWeaponMuzzleComponent::Shoot(const FWeaponModeParameters* WeaponModeParame
 	FHitResult HitResult;
 	const FVector MuzzleLocation = GetComponentLocation();
 	const FVector EndLocation = ViewPointLocation + ViewPointRotation.Vector() * ModeParameters->WeaponRange;
-	FVector TraceEnd = EndLocation;
 
+	const APawn* PawnOwner = GetOwningPawn();
 	switch (ModeParameters->HitRegistrationType)
 	{
 	case EHitRegistrationType::Projectile:
-		ShootProjectile(MuzzleLocation, ViewPointLocation, ViewPointRotation, EndLocation);
+		if (IsValid(PawnOwner) && PawnOwner->GetLocalRole() == ROLE_Authority)
+		{
+			ShootProjectile(WeaponModeParameters->ProjectileClass, MuzzleLocation, ViewPointLocation, ViewPointRotation, EndLocation);
+		}
 		break;
 	case EHitRegistrationType::HitScan:
 	default:
-		TraceEnd = ShootHitScan(ViewPointLocation, ViewPointRotation, Controller, HitResult, MuzzleLocation, EndLocation);
+		const FVector TraceEnd = ShootHitScan(ViewPointLocation, ViewPointRotation, HitResult, MuzzleLocation, EndLocation);
+		if (IsValid(ModeParameters->BulletTraceFX))
+		{
+			UNiagaraComponent* BulletTraceFXComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), ModeParameters->BulletTraceFX, GetComponentLocation(), GetComponentRotation());
+			if (IsValid(BulletTraceFXComponent))
+			{
+				BulletTraceFXComponent->SetVectorParameter(ModeParameters->TraceEndParamName, TraceEnd);
+			}
+		}
 		break;
-	}
-
-	if (IsValid(ModeParameters->BulletTraceFX))
-	{
-		UNiagaraComponent* BulletTraceFXComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), ModeParameters->BulletTraceFX, GetComponentLocation(), GetComponentRotation());
-		BulletTraceFXComponent->SetVectorParameter(ModeParameters->TraceEndParamName, TraceEnd);
 	}
 }
 
@@ -58,23 +98,58 @@ APawn* UWeaponMuzzleComponent::GetOwningPawn() const
 	return PawnOwner;
 }
 
-void UWeaponMuzzleComponent::ShootProjectile(const FVector MuzzleLocation, const FVector ViewPointLocation, const FRotator ViewPointRotation, const FVector EndLocation) const
+void UWeaponMuzzleComponent::ShootProjectile(const TSubclassOf<AXyzProjectile> ProjectileClass, const FVector MuzzleLocation, const FVector ViewPointLocation,
+	const FRotator ViewPointRotation, const FVector EndLocation)
 {
-	const FVector OffsetFromPOV = MuzzleLocation - ViewPointLocation;
-	const FVector POVForwardVector = ViewPointRotation.Vector();
-	const float ForwardOffsetFromPOV = FVector::DotProduct(OffsetFromPOV, POVForwardVector);
-	const FVector StartLocation = ViewPointLocation + POVForwardVector * ForwardOffsetFromPOV;
-	const FVector LaunchDirection = (EndLocation - StartLocation).GetSafeNormal();
-	AXyzProjectile* Projectile = GetWorld()->SpawnActor<AXyzProjectile>(ModeParameters->ProjectileClass, StartLocation, LaunchDirection.ToOrientationRotator());
+	FProjectilePool* ProjectilePool = ProjectilePools.FindByPredicate([ProjectileClass](const FProjectilePool& Pool) { return Pool.ProjectileClass == ProjectileClass; });
+	if (!ProjectilePool)
+	{
+		return;
+	}
+
+	AXyzProjectile* Projectile = ProjectilePool->GetNextAvailableProjectile();
 	if (IsValid(Projectile))
 	{
-		Projectile->SetOwner(GetOwningPawn());
-		Projectile->OnCollisionComponentHitEvent.AddDynamic(this, &UWeaponMuzzleComponent::ProcessHit);
-		Projectile->Launch(LaunchDirection);
+		const FVector OffsetFromPOV = MuzzleLocation - ViewPointLocation;
+		const FVector POVForwardVector = ViewPointRotation.Vector();
+		const float ForwardOffsetFromPOV = FVector::DotProduct(OffsetFromPOV, POVForwardVector);
+		const FVector StartLocation = ViewPointLocation + POVForwardVector * ForwardOffsetFromPOV;
+		const FVector LaunchDirection = (EndLocation - StartLocation).GetSafeNormal();
+
+		Server_OnShootProjectile(Projectile, StartLocation, LaunchDirection, ProjectilePool->PoolWorldLocation);
 	}
 }
 
-FVector UWeaponMuzzleComponent::ShootHitScan(const FVector ViewPointLocation, const FRotator ViewPointRotation, AController* Controller, FHitResult& HitResult,
+void UWeaponMuzzleComponent::Server_OnShootProjectile_Implementation(AXyzProjectile* Projectile, const FVector StartLocation, const FVector LaunchDirection, const FVector ResetLocation)
+{
+	Multicast_OnShootProjectile(Projectile, StartLocation, LaunchDirection, ResetLocation);
+}
+
+void UWeaponMuzzleComponent::Multicast_OnShootProjectile_Implementation(AXyzProjectile* Projectile, const FVector StartLocation, const FVector LaunchDirection, const FVector ResetLocation)
+{
+	OnShootProjectile(Projectile, StartLocation, LaunchDirection, ResetLocation);
+}
+
+void UWeaponMuzzleComponent::OnShootProjectile(AXyzProjectile* Projectile, const FVector StartLocation, const FVector LaunchDirection, const FVector ResetLocation)
+{
+	Projectile->SetActorLocation(StartLocation);
+	Projectile->SetActorRotation(LaunchDirection.ToOrientationRotator());
+	Projectile->SetProjectileActive(true);
+
+	AExplosiveProjectile* ExplosiveProjectile = Cast<AExplosiveProjectile>(Projectile);
+	if (IsValid(ExplosiveProjectile))
+	{
+		ExplosiveProjectile->OnProjectileExplosionEvent.AddDynamic(this, &UWeaponMuzzleComponent::OnProjectileExplosion);
+	}
+	else
+	{
+		Projectile->OnCollisionComponentHitEvent.AddDynamic(this, &UWeaponMuzzleComponent::ProcessProjectileHit);
+	}
+
+	Projectile->Launch(LaunchDirection, ResetLocation);
+}
+
+FVector UWeaponMuzzleComponent::ShootHitScan(const FVector ViewPointLocation, const FRotator ViewPointRotation, FHitResult& HitResult,
 	const FVector MuzzleLocation, const FVector EndLocation)
 {
 	FCollisionQueryParams CollisionQueryParams;
@@ -90,28 +165,17 @@ FVector UWeaponMuzzleComponent::ShootHitScan(const FVector ViewPointLocation, co
 		}
 #endif
 
-		FPointDamageEvent DamageEvent;
-		DamageEvent.HitInfo = HitResult;
-		DamageEvent.ShotDirection = ViewPointRotation.Vector();
-		DamageEvent.DamageTypeClass = ModeParameters->DamageTypeClass;
-		AActor* DamagedActor = HitResult.GetActor();
-		if (IsValid(DamagedActor))
-		{
-			float DamageFallOff = 0.f;
-			if (IsValid(ModeParameters->WeaponDamageFallOff))
-			{
-				const float Distance = FVector::Dist(MuzzleLocation, HitResult.ImpactPoint);
-				DamageFallOff = ModeParameters->WeaponDamageFallOff->GetFloatValue(Distance / ModeParameters->WeaponRange);
-			}
-
-			DamagedActor->TakeDamage(ModeParameters->WeaponMaxDamage * DamageFallOff, DamageEvent, Controller, GetOwner());
-		}
-
 		ProcessHit(HitResult.ImpactPoint - MuzzleLocation, HitResult);
 
 		return HitResult.ImpactPoint;
 	}
 	return EndLocation;
+}
+
+void UWeaponMuzzleComponent::ProcessProjectileHit(AXyzProjectile* Projectile, const FVector MovementDirection, const FHitResult& HitResult, const FVector ResetLocation)
+{
+	ResetProjectile(Projectile, ResetLocation);
+	ProcessHit(MovementDirection, HitResult);
 }
 
 void UWeaponMuzzleComponent::ProcessHit(const FVector MovementDirection, const FHitResult& HitResult)
@@ -140,6 +204,12 @@ void UWeaponMuzzleComponent::ProcessHit(const FVector MovementDirection, const F
 		}
 	}
 
+	APawn* PawnOwner = GetOwningPawn();
+	if (!IsValid(PawnOwner) || PawnOwner->GetLocalRole() != ROLE_Authority)
+	{
+		return;
+	}
+
 	FPointDamageEvent DamageEvent;
 	DamageEvent.HitInfo = HitResult;
 	DamageEvent.ShotDirection = MovementDirection;
@@ -154,15 +224,21 @@ void UWeaponMuzzleComponent::ProcessHit(const FVector MovementDirection, const F
 			DamageFallOff = ModeParameters->WeaponDamageFallOff->GetFloatValue(Distance / ModeParameters->WeaponRange);
 		}
 
-		APawn* PawnOwner = GetOwningPawn();
-		if (!IsValid(PawnOwner))
-		{
-			return;
-		}
-		AController* Controller = PawnOwner->GetController();
-		if (IsValid(Controller))
-		{
-			DamagedActor->TakeDamage(ModeParameters->WeaponMaxDamage * DamageFallOff, DamageEvent, Controller, PawnOwner);
-		}
+		DamagedActor->TakeDamage(ModeParameters->WeaponMaxDamage * DamageFallOff, DamageEvent, GetController(), PawnOwner);
 	}
+}
+
+void UWeaponMuzzleComponent::OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, const FVector ResetLocation)
+{
+	ExplosiveProjectile->OnProjectileExplosionEvent.RemoveAll(this);
+	ResetProjectile(ExplosiveProjectile, ResetLocation);
+}
+
+void UWeaponMuzzleComponent::ResetProjectile(AXyzProjectile* Projectile, const FVector ResetLocation)
+{
+	Projectile->SetProjectileActive(false);
+	Projectile->SetActorLocation(ResetLocation);
+	Projectile->SetActorRotation(FRotator::ZeroRotator);
+
+	Projectile->OnCollisionComponentHitEvent.RemoveAll(this);
 }

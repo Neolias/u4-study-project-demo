@@ -57,11 +57,11 @@ void UBTService_AimWeapon::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* No
 	{
 		if(!bIsAiming)
 		{
-			BaseCharacter->StartAim();
+			BaseCharacter->SetWantsToAim();
 		}
 	}
 	else if (bIsAiming)
 	{
-		BaseCharacter->StopAim();
+		BaseCharacter->ResetWantsToAim();
 	}
 }

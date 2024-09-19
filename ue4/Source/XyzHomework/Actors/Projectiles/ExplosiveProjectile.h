@@ -6,15 +6,16 @@
 #include "Actors/Projectiles/XyzProjectile.h"
 #include "ExplosiveProjectile.generated.h"
 
-/**
- * 
- */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnProjectileExplosionEvent, AExplosiveProjectile*, ExplosiveProjectile, const FVector, ResetLocation);
+
 UCLASS()
 class XYZHOMEWORK_API AExplosiveProjectile : public AXyzProjectile
 {
 	GENERATED_BODY()
 
 public:
+	FOnProjectileExplosionEvent OnProjectileExplosionEvent;
+
 	AExplosiveProjectile();
 
 protected:
@@ -27,8 +28,11 @@ protected:
 
 	FTimerHandle DetonationTimer;
 
+	void Explode();
 	virtual void OnProjectileLaunched() override;
-	void OnDetonationTimerElapsed() const;
+	void OnDetonationTimerElapsed();
 	AController* GetController() const;
 	virtual void OnCollisionComponentHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit) override;
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDetonation();
 };

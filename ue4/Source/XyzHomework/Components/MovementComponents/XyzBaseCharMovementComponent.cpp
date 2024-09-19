@@ -32,6 +32,56 @@ void UXyzBaseCharMovementComponent::BeginPlay()
 	}
 }
 
+// Network
+
+FNetworkPredictionData_Client* UXyzBaseCharMovementComponent::GetPredictionData_Client() const
+{
+	if (ClientPredictionData == nullptr)
+	{
+		UXyzBaseCharMovementComponent* MutableThis = const_cast<UXyzBaseCharMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_XyzCharacter(*this);
+	}
+
+	return Super::GetPredictionData_Client();
+}
+
+void UXyzBaseCharMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
+{
+	//  FLAG_JumpPressed = 0x01,	// Jump pressed
+	//	FLAG_WantsToCrouch = 0x02,	// Wants to crouch
+	//	FLAG_Reserved_1 = 0x04,	// Reserved for future use
+	//	FLAG_Reserved_2 = 0x08,	// Reserved for future use
+	//	// Remaining bit masks are available for custom flags.
+	//	FLAG_Custom_0 = 0x10, // Sprinting
+	//	FLAG_Custom_1 = 0x20, // Mantling
+	//	FLAG_Custom_2 = 0x40, // PressingSlide
+	//	FLAG_Custom_3 = 0x80,
+
+	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
+	{
+		if (Flags & FSavedMove_Character::FLAG_Custom_0)
+		{
+			StartSprint();
+		}
+		else
+		{
+			StopSprint();
+		}
+
+		if (Flags & FSavedMove_Character::FLAG_Custom_1 && !IsMantling())
+		{
+			BaseCharacter->Mantle(true);
+		}
+
+		if (Flags & FSavedMove_Character::FLAG_Custom_2 && !bIsSliding)
+		{
+			StartSlide();
+		}
+	}
+
+	Super::UpdateFromCompressedFlags(Flags);
+}
+
 // General
 
 void UXyzBaseCharMovementComponent::OnMovementModeChanged(const EMovementMode PreviousMovementMode, const uint8 PreviousCustomMode)
@@ -201,6 +251,11 @@ void UXyzBaseCharMovementComponent::PhysicsRotation(const float DeltaTime)
 
 void UXyzBaseCharMovementComponent::PhysCustom(const float DeltaTime, const int32 Iterations)
 {
+	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		return;
+	}
+
 	switch (CustomMovementMode)
 	{
 	case (uint8)ECustomMovementMode::CMOVE_Mantling:
@@ -347,14 +402,52 @@ bool UXyzBaseCharMovementComponent::DoJump(const bool bReplayingMoves)
 
 void UXyzBaseCharMovementComponent::StartSprint()
 {
+	if (bIsSprinting)
+	{
+		return;
+	}
+
 	bIsSprinting = true;
 	bForceMaxAccel = 1;
+	BaseCharacter->OnSprintStart();
+
+	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
+	{
+		Multicast_StartSprint();
+	}
+}
+
+void UXyzBaseCharMovementComponent::Multicast_StartSprint_Implementation()
+{
+	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		StartSprint();
+	}
 }
 
 void UXyzBaseCharMovementComponent::StopSprint()
 {
+	if (!bIsSprinting)
+	{
+		return;
+	}
+
 	bIsSprinting = false;
 	bForceMaxAccel = 0;
+	BaseCharacter->OnSprintStop();
+
+	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
+	{
+		Multicast_StopSprint();
+	}
+}
+
+void UXyzBaseCharMovementComponent::Multicast_StopSprint_Implementation()
+{
+	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		StopSprint();
+	}
 }
 
 // Sliding
@@ -387,6 +480,19 @@ void UXyzBaseCharMovementComponent::StartSlide()
 	bIsSliding = true;
 	bForceNextFloorCheck = true;
 	BaseCharacter->OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
+	{
+		Multicast_StartSlide();
+	}
+}
+
+void UXyzBaseCharMovementComponent::Multicast_StartSlide_Implementation()
+{
+	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		StartSlide();
+	}
 }
 
 void UXyzBaseCharMovementComponent::StopSlide()
@@ -597,6 +703,7 @@ void UXyzBaseCharMovementComponent::PhysMantling(float DeltaTime, int32 Iteratio
 	const FVector Delta = NewLocation - GetActorLocation();
 	FHitResult Hit;
 
+	Velocity = Delta / DeltaTime;
 	SafeMoveUpdatedComponent(Delta, NewRotation, false, Hit);
 }
 
@@ -1004,4 +1111,105 @@ void UXyzBaseCharMovementComponent::PhysWallRun(const float DeltaTime, int32 Ite
 
 	FHitResult Hit;
 	SafeMoveUpdatedComponent(Delta + DisplacementDelta, UpdatedCharacterRotation, false, Hit);
+}
+
+void FSavedMove_XyzCharacter::Clear()
+{
+	Super::Clear();
+
+	bSavedIsSprinting = 0;
+	bSavedIsMantling = 0;
+	bSavedIsPressingSlide = 0;
+}
+
+void FSavedMove_XyzCharacter::SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel,
+	FNetworkPredictionData_Client_Character& ClientData)
+{
+	Super::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
+
+	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::SetMoveFor: AXyzBaseCharacter should be used."))
+		const AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
+
+	const UXyzBaseCharMovementComponent* BaseCharacterMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
+	bSavedIsSprinting = BaseCharacterMovementComponent->bIsSprinting;
+	bSavedIsMantling = BaseCharacterMovementComponent->IsMantling();
+	bSavedIsPressingSlide = BaseCharacterMovementComponent->bIsSliding;
+}
+
+bool FSavedMove_XyzCharacter::CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* InCharacter,
+	float MaxDelta) const
+{
+	const FSavedMove_XyzCharacter* NewMove = StaticCast<FSavedMove_XyzCharacter*>(NewMovePtr.Get());
+
+	if (NewMove->bSavedIsSprinting != bSavedIsSprinting || NewMove->bSavedIsMantling != bSavedIsMantling || NewMove->bSavedIsPressingSlide != bSavedIsPressingSlide)
+	{
+		return false;
+	}
+
+	return Super::CanCombineWith(NewMovePtr, InCharacter, MaxDelta);
+}
+
+void FSavedMove_XyzCharacter::PrepMoveFor(ACharacter* Character)
+{
+	Super::PrepMoveFor(Character);
+
+	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::PrepMoveFor: AXyzBaseCharacter should be used."))
+		AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
+
+	UXyzBaseCharMovementComponent* BaseCharacterMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
+
+	if (bSavedIsSprinting)
+	{
+		BaseCharacterMovementComponent->StartSprint();
+	}
+	else
+	{
+		BaseCharacterMovementComponent->StopSprint();
+	}
+
+	if (bSavedIsPressingSlide)
+	{
+		BaseCharacterMovementComponent->StartSlide();
+	}
+}
+
+uint8 FSavedMove_XyzCharacter::GetCompressedFlags() const
+{
+	//  FLAG_JumpPressed = 0x01,	// Jump pressed
+	//	FLAG_WantsToCrouch = 0x02,	// Wants to crouch
+	//	FLAG_Reserved_1 = 0x04,	// Reserved for future use
+	//	FLAG_Reserved_2 = 0x08,	// Reserved for future use
+	//	// Remaining bit masks are available for custom flags.
+	//	FLAG_Custom_0 = 0x10, // Sprinting
+	//	FLAG_Custom_1 = 0x20, // Mantling
+	//	FLAG_Custom_2 = 0x40, // PressingSlide
+	//	FLAG_Custom_3 = 0x80,
+
+	uint8 Result = Super::GetCompressedFlags();
+
+	if (bSavedIsSprinting)
+	{
+		Result |= FLAG_Custom_0;
+	}
+	if (bSavedIsMantling)
+	{
+		Result &= ~FLAG_JumpPressed;
+		Result |= FLAG_Custom_1;
+	}
+	if (bSavedIsPressingSlide)
+	{
+		Result |= FLAG_Custom_2;
+	}
+
+	return Result;
+}
+
+FNetworkPredictionData_Client_XyzCharacter::FNetworkPredictionData_Client_XyzCharacter(const UCharacterMovementComponent& ClientMovement)
+	: Super(ClientMovement)
+{
+}
+
+FSavedMovePtr FNetworkPredictionData_Client_XyzCharacter::AllocateNewMove()
+{
+	return FSavedMovePtr(new FSavedMove_XyzCharacter());
 }

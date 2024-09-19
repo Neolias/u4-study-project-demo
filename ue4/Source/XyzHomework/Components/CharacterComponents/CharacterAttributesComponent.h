@@ -26,6 +26,7 @@ public:
 
 	explicit UCharacterAttributesComponent();
 	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	float GetMaxStamina() const { return MaxStamina; }
 	float GetCurrentStamina() const { return CurrentStamina; }
@@ -74,9 +75,14 @@ private:
 	TWeakObjectPtr<class AXyzBaseCharacter> CachedBaseCharacter;
 	UPROPERTY()
 	class UXyzBaseCharMovementComponent* BaseCharacterMovementComponent;
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth)
 	float CurrentHealth = 0.f;
+	UFUNCTION()
+	void OnRep_CurrentHealth();
+	UPROPERTY(Replicated)
 	float CurrentStamina = 0.f;
 	bool bIsOutOfStamina = false;
+	UPROPERTY(Replicated)
 	float CurrentOxygen = 0.f;
 	bool bIsOutOfOxygen = false;
 	bool bIsDeathTriggered = false;
@@ -84,7 +90,8 @@ private:
 
 	UFUNCTION()
 	void OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
-	void TryTriggerDeath(const UDamageType* DamageType);
+	void TryTriggerDeath(const UDamageType* DamageType, const bool bShouldPlayAnimation = false);
+	void TryTriggerDeath(const bool bShouldPlayAnimation = false);
 	void UpdateStaminaValue(float DeltaTime);
 	void TryChangeOutOfStaminaState();
 	void UpdateOxygenValue(float DeltaTime);

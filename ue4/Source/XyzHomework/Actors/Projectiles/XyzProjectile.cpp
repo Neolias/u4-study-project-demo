@@ -17,6 +17,7 @@ AXyzProjectile::AXyzProjectile()
 
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
 	StaticMeshComponent->SetupAttachment(RootComponent);
+	StaticMeshComponent->SetIsReplicated(true);
 
 	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
 	ProjectileMovementComponent->SetUpdatedComponent(CollisionComponent);
@@ -24,30 +25,58 @@ AXyzProjectile::AXyzProjectile()
 	ProjectileMovementComponent->bRotationFollowsVelocity = true;
 	ProjectileMovementComponent->bShouldBounce = true;
 	ProjectileMovementComponent->Bounciness = Bounciness;
+	ProjectileMovementComponent->SetAutoActivate(false);
+
+	SetReplicates(true);
+	SetReplicateMovement(true);
+	SetProjectileActive(false);
 }
 
 void AXyzProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+
 	CollisionComponent->OnComponentHit.AddDynamic(this, &AXyzProjectile::OnCollisionComponentHit);
 }
 
-void AXyzProjectile::Launch(const FVector Direction)
+void AXyzProjectile::Tick(float DeltaSeconds)
 {
-	CollisionComponent->IgnoreActorWhenMoving(GetOwner(), true);
+	Super::Tick(DeltaSeconds);
+}
+
+void AXyzProjectile::SetProjectileActive(const bool bIsActive)
+{
+	ProjectileMovementComponent->SetActive(bIsActive);
+	SetActorTickEnabled(bIsActive);
+	SetActorEnableCollision(bIsActive);
+	StaticMeshComponent->SetVisibility(bIsActive, true);
+}
+
+void AXyzProjectile::Launch(const FVector Direction, const FVector ProjectileResetLocation/* = FVector::ZeroVector*/)
+{
+	CollisionComponent->IgnoreActorWhenMoving(GetOwningPawn(), true);
 	ProjectileMovementComponent->MaxSpeed = MaxSpeed;
 	ProjectileMovementComponent->Velocity = LaunchSpeed * Direction;
 	ProjectileMovementComponent->Bounciness = Bounciness;
-
+	ResetLocation = ProjectileResetLocation;
 
 	OnProjectileLaunched();
 }
 
-void AXyzProjectile::OnCollisionComponentHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+APawn* AXyzProjectile::GetOwningPawn() const
+{
+	APawn* PawnOwner = Cast<APawn>(GetOwner());
+	if (!IsValid(PawnOwner))
+	{
+		PawnOwner = Cast<APawn>(GetOwner()->GetOwner());
+	}
+	return PawnOwner;
+}
+
+void AXyzProjectile::OnCollisionComponentHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (OnCollisionComponentHitEvent.IsBound())
 	{
-		OnCollisionComponentHitEvent.Broadcast(ProjectileMovementComponent->Velocity.GetSafeNormal(), Hit);
+		OnCollisionComponentHitEvent.Broadcast(this, ProjectileMovementComponent->Velocity.GetSafeNormal(), Hit, ResetLocation);
 	}
 }

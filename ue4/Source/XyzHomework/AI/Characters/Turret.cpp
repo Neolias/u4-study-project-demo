@@ -8,6 +8,7 @@
 #include "Components/AIComponents/TurretAttributesComponent.h"
 #include "Components/AIComponents/TurretMuzzleComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 #include "Particles/ParticleSystem.h"
 
 ATurret::ATurret()
@@ -39,6 +40,10 @@ ATurret::ATurret()
 
 	TurretMuzzleComponent = CreateDefaultSubobject<UTurretMuzzleComponent>(TEXT("TurretMuzzleComponent"));
 	TurretMuzzleComponent->SetupAttachment(BarrelBodyComponent);
+
+	SetReplicates(true);
+	BaseMeshComponent->SetIsReplicated(true);
+	HeadBaseComponent->SetIsReplicated(true);
 }
 
 void ATurret::BeginPlay()
@@ -109,6 +114,12 @@ void ATurret::PossessedBy(AController* NewController)
 	}
 }
 
+void ATurret::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATurret, CurrentTarget);
+}
+
 void ATurret::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -147,24 +158,49 @@ void ATurret::SetTurretMode(const ETurretMode NewMode)
 	{
 		CurrentTarget = nullptr;
 		TurretMuzzleComponent->StopFire();
+		Multicast_StopFire();
 		break;
 	}
 	case ETurretMode::Tracking:
 	{
-		if (IsValid(Controller))
-		{
-			TurretMuzzleComponent->StartFire(Controller);
-		}
+		TurretMuzzleComponent->StartFire();
+		Multicast_StartFire();
 		break;
 	}
+	}
+}
+
+void ATurret::Multicast_StartFire_Implementation()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		TurretMuzzleComponent->StartFire();
+	}
+}
+
+void ATurret::Multicast_StopFire_Implementation()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		TurretMuzzleComponent->StopFire();
 	}
 }
 
 void ATurret::SetCurrentTarget(AActor* NewTarget)
 {
 	CurrentTarget = NewTarget;
+	OnCurrentTargetSet();
+}
+
+void ATurret::OnCurrentTargetSet()
+{
 	const ETurretMode NewMode = CurrentTarget.IsValid() ? ETurretMode::Tracking : ETurretMode::Searching;
 	SetTurretMode(NewMode);
+}
+
+void ATurret::OnRep_CurrentTargetSet()
+{
+	OnCurrentTargetSet();
 }
 
 FVector ATurret::GetPawnViewLocation() const
@@ -216,8 +252,14 @@ void ATurret::TrackEnemy(const float DeltaTime)
 
 void ATurret::OnDeath()
 {
+	Multicast_OnDeath();
+}
+
+void ATurret::Multicast_OnDeath_Implementation()
+{
 	SetActorEnableCollision(false);
-	SetActorHiddenInGame(true);
+	BaseMeshComponent->SetVisibility(false, true);
+	HeadBaseComponent->SetVisibility(false, true);
 
 	SetTurretMode(ETurretMode::Dead);
 
