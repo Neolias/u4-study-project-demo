@@ -18,19 +18,23 @@ class XYZHOMEWORK_API AAICharacter : public AXyzBaseCharacter
 	GENERATED_BODY()
 
 public:
-	AAICharacter(const OUT FObjectInitializer& ObjectInitializer);
+	AAICharacter(const FObjectInitializer& ObjectInitializer);
 	UBehaviorTree* GetBehaviorTree() const { return BehaviorTree; }
 	FAISenseAffiliationFilter GetAISenseAffiliationFilter() const { return AISenseAffiliationFilter; }
 	UAIPatrollingComponent* GetPatrollingComponent() const { return PatrollingComponent; }
 	bool ShouldFollowEnemies() const { return bShouldFollowEnemies; }
 
+	//@ SaveSubsystemInterface
+	virtual void OnLevelDeserialized_Implementation() override;
+	//~ SaveSubsystemInterface
+
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI Character | Behavior Tree")
-	UBehaviorTree* BehaviorTree;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Character | Perception")
-	FAISenseAffiliationFilter AISenseAffiliationFilter;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI Character | Navigaton")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UAIPatrollingComponent* PatrollingComponent;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Character | Navigaton")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|AI")
+	UBehaviorTree* BehaviorTree;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|AI")
+	FAISenseAffiliationFilter AISenseAffiliationFilter;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|AI")
 	bool bShouldFollowEnemies = true;
 };

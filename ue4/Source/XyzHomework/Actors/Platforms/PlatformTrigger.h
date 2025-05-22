@@ -7,8 +7,6 @@
 #include "GameFramework/Actor.h"
 #include "PlatformTrigger.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTriggerStatusChanged, bool, bIsTriggered);
-
 class ABasePlatform;
 
 UCLASS()
@@ -17,6 +15,8 @@ class XYZHOMEWORK_API APlatformTrigger : public AActor
 	GENERATED_BODY()
 
 public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTriggerStatusChanged, bool, bIsTriggered);
+
 	UPROPERTY(BlueprintAssignable)
 	FOnTriggerStatusChanged OnTriggerStatusChanged;
 
@@ -25,6 +25,8 @@ public:
 	void SetIsTriggered(bool bIsTriggered_In);
 
 protected:
+	virtual void BeginPlay() override;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* TriggerMesh;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -32,19 +34,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TArray<ABasePlatform*> ControlledPlatforms;
 
-	virtual void BeginPlay() override;
-
 private:
-	UPROPERTY(ReplicatedUsing = OnRep_SetIsTriggered)
-	bool bIsTriggered = false;
-	UPROPERTY(Transient)
-	TArray<APawn*> OverlappedPawns;
-
 	void OnSetIsTriggered() const;
-	UFUNCTION()
-	void OnRep_SetIsTriggered(bool bIsTriggered_Old);
 	UFUNCTION()
 	void RegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	UFUNCTION()
 	void UnRegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	UPROPERTY(ReplicatedUsing = OnRep_SetIsTriggered)
+	bool bIsTriggered = false;
+	UFUNCTION()
+	void OnRep_SetIsTriggered(bool bIsTriggered_Old);
+	UPROPERTY(Transient)
+	TArray<APawn*> OverlappedPawns;
 };

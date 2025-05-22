@@ -4,11 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Characters/PlayerCharacter.h"
-#include "Components/TimelineComponent.h"
 #include "FPPlayerCharacter.generated.h"
 
 /**
- *
+ * DEPRECATED
  */
 UCLASS()
 class XYZHOMEWORK_API AFPPlayerCharacter : public APlayerCharacter
@@ -19,122 +18,113 @@ public:
 	explicit AFPPlayerCharacter(const FObjectInitializer& ObjectInitializer);
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
-
-	// General
-
 	virtual FRotator GetViewRotation() const override;
 
-	// Sliding
-
-	virtual void OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
-	// Crouching
-
-	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
-	// Proning
-
-	virtual void OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnEndProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player")
 	USkeletalMeshComponent* FPMeshComponent;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera")
-	FName CameraSocket = FName("CameraSocket");
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float AlignmentBlendSpeed = 10.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
-	float LadderCameraMinPitch = -60.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
-	float LadderCameraMaxPitch = 80.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -359.9f, UIMax = 0.f))
-	float LadderCameraMinYaw = -60.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = 0.f, UIMax = 359.9f))
-	float LadderCameraMaxYaw = 60.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
-	float ZiplineCameraMinPitch = -89.9f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
-	float ZiplineCameraMaxPitch = 89.9f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = -359.9f, UIMax = 0.f))
-	float ZiplineCameraMinYaw = -90.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera", meta = (UIMin = 0.f, UIMax = 359.9f))
-	float ZiplineCameraMaxYaw = 90.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera")
-	UCurveFloat* WallRunCameraTiltCurve;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XYZ Character | Movement | Sliding")
-	UAnimMontage* SlideFPAnimMontage;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XYZ Character | Movement | Landing")
-	UAnimMontage* HardLandFPAnimMontage;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XYZ Character | First Person | Camera")
-	UCameraComponent* FPCameraComponent;
-
-	// General
-	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
-
-	// Landing
-
-	virtual void OnHardLandStart() override;
-	virtual void OnHardLandEnd() override;
-
-	// OutOfStamina
-
-	virtual void OnOutOfStaminaStart() override;
-	virtual void OnOutOfStaminaEnd() override;
-
-	// Mantling
-
-	virtual void OnMantle(const FMantlingSettings& MantlingSettings, const FMantlingMovementParameters& MantlingParameters) override;
-
-	// Interactive Actors
-
-	virtual void OnAttachedToLadderFromTop(ALadder* Ladder) override;
-
-	// Death
-
-	virtual void OnDeathStarted() override;
 
 private:
-	FTimerHandle FPMantlingTimer;
-	FTimerHandle FPLadderTimer;
-	FTimerHandle FPSlideTimer;
-	FTimeline WallRunCameraTiltTimeline;
-	bool bIsForcedToAlignFPCamera = false;
-	bool bWantsToEndMantle = false;
-	bool bWantsToAttachToLadder = false;
-	bool bWantsToEndOutOfStamina = false;
-	bool bWantsToEndHardLand = false;
-	float AnimMontageCameraBlendSpeed = 50.f;
-	FRotator ForcedTargetControlRotation = FRotator::ZeroRotator;
-
-	// General
-
 	bool IsFPMontagePlaying() const;
 
-	// Camera
+	FRotator ForcedTargetControlRotation = FRotator::ZeroRotator;
 
+#pragma region CAMERA
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UCameraComponent* FPCameraComponent;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera")
+	FName CameraSocket = FName("CameraSocket");
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (ClampMin = 0.f, UIMin = 0.f))
+	float AlignmentBlendSpeed = 10.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
+	float LadderCameraMinPitch = -60.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
+	float LadderCameraMaxPitch = 80.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -359.9f, UIMax = 0.f))
+	float LadderCameraMinYaw = -60.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = 0.f, UIMax = 359.9f))
+	float LadderCameraMaxYaw = 60.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
+	float ZiplineCameraMinPitch = -89.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
+	float ZiplineCameraMaxPitch = 89.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -359.9f, UIMax = 0.f))
+	float ZiplineCameraMinYaw = -90.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = 0.f, UIMax = 359.9f))
+	float ZiplineCameraMaxYaw = 90.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera")
+	UCurveFloat* WallRunCameraTiltCurve;
+
+private:
 	bool IsAligningFPCameraToSocketRotation() const;
 	void StartFPCameraAlignment();
 	void EndFPCameraAlignment();
 	void UpdateCameraAlignment(float DeltaSeconds);
+	void UpdateWallRunCameraTilt(float Value) const;
+	void StartWallRunCameraTilt();
+	void EndWallRunCameraTilt();
 
-	// Mantling
+	FTimeline WallRunCameraTiltTimeline;
+	bool bIsForcedToAlignFPCamera = false;
+	float AnimMontageCameraBlendSpeed = 50.f;
+#pragma endregion
 
-	void OnEndMantle();
+#pragma region MOVEMENT
 
-	// Interactive Actors
+public:
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
+	virtual void OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnStopProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 
+protected:
+	virtual void OnMantle(const FMantlingSettings& MantlingSettings, const FMantlingMovementParameters& MantlingParameters) override;
+	virtual void StartHardLand() override;
+	virtual void StopHardLand() override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Base Character|FP Player")
+	UAnimMontage* SlideFPAnimMontage;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player")
+	UAnimMontage* HardLandFPAnimMontage;
+
+private:
+	void OnStopMantle();
+
+	bool bWantsToEndMantle = false;
+	bool bWantsToEndHardLand = false;
+	FTimerHandle FPMantlingTimerHandle;
+	FTimerHandle FPSlideTimerHandle;
+#pragma endregion
+
+#pragma region ENVIRONMENT ACTORS
+
+protected:
+	virtual void OnAttachedToLadderFromTop(ALadder* Ladder) override;
+
+private:
 	void OnAttachedToLadder();
 	void OnDetachedFromLadder();
 	void OnAttachedToZipline();
 	void OnDetachedFromZipline();
 
-	// Wall Running
+	bool bWantsToAttachToLadder = false;
+	FTimerHandle FPLadderTimerHandle;
+#pragma endregion
 
-	UFUNCTION()
-	void UpdateWallRunCameraTilt(float Value) const;
-	void StartWallRunCameraTilt() { WallRunCameraTiltTimeline.Play(); }
-	void EndWallRunCameraTilt() { WallRunCameraTiltTimeline.Reverse(); }
+#pragma region ATTRIBUTES
+
+protected:
+	virtual void OnDeath(bool bShouldPlayAnimMontage) override;
+	virtual void StartOutOfStaminaInternal() override;
+	virtual void StopOutOfStaminaInternal() override;
+
+private:
+	bool bWantsToEndOutOfStamina = false;
+
+#pragma endregion
 };

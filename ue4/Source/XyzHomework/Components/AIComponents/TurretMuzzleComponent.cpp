@@ -1,20 +1,28 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Components/AIComponents/TurretMuzzleComponent.h"
 
-#include "NiagaraFunctionLibrary.h"
-#include "XyzHomeworkTypes.h"
 #include "DrawDebugHelpers.h"
 #include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "XyzHomeworkTypes.h"
 #include "Components/DecalComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/DebugSubsystem.h"
 
-
 UTurretMuzzleComponent::UTurretMuzzleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+}
+
+void UTurretMuzzleComponent::StartFire()
+{
+	GetWorld()->GetTimerManager().SetTimer(FireTimer, [=] { Shoot(GetController()); }, 60.f / FireRate, true, FirstShotDelay);
+}
+
+void UTurretMuzzleComponent::StopFire()
+{
+	GetWorld()->GetTimerManager().ClearTimer(FireTimer);
 }
 
 APawn* UTurretMuzzleComponent::GetOwningPawn() const
@@ -33,26 +41,16 @@ AController* UTurretMuzzleComponent::GetController() const
 	return IsValid(PawnOwner) ? PawnOwner->GetController() : nullptr;
 }
 
-void UTurretMuzzleComponent::StartFire()
-{
-	GetWorld()->GetTimerManager().SetTimer(FireTimer, [=] {Shoot(GetController()); }, 60.f / FireRate, true, FirstShotDelay);
-}
-
-void UTurretMuzzleComponent::StopFire()
-{
-	GetWorld()->GetTimerManager().ClearTimer(FireTimer);
-}
-
 void UTurretMuzzleComponent::Shoot(AController* Controller) const
 {
 	FHitResult HitResult;
-	const FVector MuzzleLocation = GetComponentLocation();
-	const FRotator MuzzleRotation = GetComponentRotation();
-	const FVector ShotDirection = GetShotDirection(MuzzleRotation);
-	const FVector EndLocation = MuzzleLocation + ShotDirection * WeaponRange;
+	FVector MuzzleLocation = GetComponentLocation();
+	FRotator MuzzleRotation = GetComponentRotation();
+	FVector ShotDirection = GetShotDirection(MuzzleRotation);
+	FVector EndLocation = MuzzleLocation + ShotDirection * WeaponRange;
 	FVector TraceEnd = EndLocation;
 
-	if (IsValid(MuzzleFlashFX))
+	if (MuzzleFlashFX)
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), MuzzleFlashFX, MuzzleLocation, MuzzleRotation);
 	}
@@ -71,17 +69,20 @@ void UTurretMuzzleComponent::Shoot(AController* Controller) const
 		TraceEnd = HitResult.ImpactPoint;
 	}
 
-	if (IsValid(BulletTraceFX))
+	if (BulletTraceFX)
 	{
 		UNiagaraComponent* BulletTraceFXComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), BulletTraceFX, MuzzleLocation, MuzzleRotation);
-		BulletTraceFXComponent->SetVectorParameter(TraceEndParamName, TraceEnd);
+		if (BulletTraceFXComponent)
+		{
+			BulletTraceFXComponent->SetVectorParameter(TraceEndParamName, TraceEnd);
+		}
 	}
 }
 
 FVector UTurretMuzzleComponent::GetShotDirection(FRotator MuzzleRotation) const
 {
-	const float SpreadAngle = FMath::FRandRange(0.f, MaxBulletSpreadAngle);
-	const float SpreadRoll = FMath::FRandRange(0.f, 360.f);
+	float SpreadAngle = FMath::FRandRange(0.f, MaxBulletSpreadAngle);
+	float SpreadRoll = FMath::FRandRange(0.f, 360.f);
 	MuzzleRotation.Yaw += SpreadAngle * FMath::Cos(SpreadRoll);
 	MuzzleRotation.Pitch += SpreadAngle * FMath::Sin(SpreadRoll);
 	return MuzzleRotation.Vector();
@@ -97,16 +98,20 @@ void UTurretMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitRes
 	}
 #endif
 
-
 	FDecalInfo DecalInfo = DefaultDecalInfo;
-	if (IsValid(DecalInfo.DecalMaterial))
+	if (DecalInfo.DecalMaterial)
 	{
 		UDecalComponent* DecalComponent = UGameplayStatics::SpawnDecalAtLocation(GetWorld(), DecalInfo.DecalMaterial, DecalInfo.DecalSize, HitResult.ImpactPoint, HitResult.ImpactNormal.ToOrientationRotator());
-		if (IsValid(DecalComponent))
+		if (DecalComponent)
 		{
 			DecalComponent->SetFadeScreenSize(0.0001f);
 			DecalComponent->SetFadeOut(DecalInfo.DecalLifeTime, DecalInfo.DecalFadeOutTime);
 		}
+	}
+
+	if (!DamageTypeClass.LoadSynchronous())
+	{
+		return;
 	}
 
 	APawn* PawnOwner = GetOwningPawn();
@@ -118,14 +123,14 @@ void UTurretMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitRes
 	FPointDamageEvent DamageEvent;
 	DamageEvent.HitInfo = HitResult;
 	DamageEvent.ShotDirection = MovementDirection;
-	DamageEvent.DamageTypeClass = DamageTypeClass;
+	DamageEvent.DamageTypeClass = DamageTypeClass.LoadSynchronous();
 	AActor* DamagedActor = HitResult.GetActor();
 	if (IsValid(DamagedActor))
 	{
 		float DamageFallOff = 0.f;
-		if (IsValid(WeaponDamageFallOff))
+		if (WeaponDamageFallOff)
 		{
-			const float Distance = FVector::Dist(GetComponentLocation(), HitResult.ImpactPoint);
+			float Distance = FVector::Dist(GetComponentLocation(), HitResult.ImpactPoint);
 			DamageFallOff = WeaponDamageFallOff->GetFloatValue(Distance / WeaponRange);
 		}
 

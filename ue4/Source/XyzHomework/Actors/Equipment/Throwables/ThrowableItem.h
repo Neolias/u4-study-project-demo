@@ -3,42 +3,38 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "XyzGenericStructs.h"
 #include "Actors/Equipment/EquipmentItem.h"
 #include "Actors/Projectiles/XyzProjectile.h"
 #include "ThrowableItem.generated.h"
 
+class AXyzProjectile;
+class AExplosiveProjectile;
 
-DECLARE_MULTICAST_DELEGATE(FOnThrowEndEvent)
-DECLARE_MULTICAST_DELEGATE(FOnThrowAnimationFinishedEvent)
-
-/**
- *
- */
 UCLASS()
 class XYZHOMEWORK_API AThrowableItem : public AEquipmentItem
 {
 	GENERATED_BODY()
 
 public:
-	FOnThrowEndEvent OnThrowEndEvent;
+	DECLARE_MULTICAST_DELEGATE(FOnThrowEndEvent)
+	DECLARE_MULTICAST_DELEGATE(FOnThrowAnimationFinishedEvent)
+	FOnThrowEndEvent OnItemThrownEvent;
 	FOnThrowAnimationFinishedEvent OnThrowAnimationFinishedEvent;
 
 	AThrowableItem();
-	EWeaponAmmoType GetAmmoType() const { return AmmoType; }
-	TSubclassOf<AXyzProjectile> GetProjectileClass() const { return ProjectileClass; }
+	virtual EWeaponAmmoType GetAmmoType() override;
+	TSoftClassPtr<AXyzProjectile> GetProjectileClass() const { return ProjectileClass; }
 	float GetThrowingWalkSpeed() const { return ThrowingWalkSpeed; }
-	bool IsThrowing() const { return bIsThrowing; }
 	void Throw(AXyzProjectile* ThrowableProjectile, const FVector ResetLocation);
-	void LaunchProjectile() const;
+	void LaunchProjectile();
 
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable Parameters | Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Throwable Parameters")
 	UStaticMeshComponent* StaticMesh;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable Parameters")
 	EWeaponAmmoType AmmoType = EWeaponAmmoType::Grenade;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable Parameters")
-	TSubclassOf<AXyzProjectile> ProjectileClass = AXyzProjectile::StaticClass();
+	TSoftClassPtr<AXyzProjectile> ProjectileClass;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Throwable Parameters")
 	FName ThrowableSocketName = "ThrowableSocket";
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Throwable Parameters", meta = (ClampMin = -90.f, UIMin = -90.f, ClampMax = 90.f, UIMax = 90.f))
@@ -51,16 +47,13 @@ protected:
 	float ThrowingWalkSpeed = 150.f;
 
 private:
+	void OnThrowEnd() const;
+	void OnThrowAnimationFinished();
+	void ProcessThrowableProjectileHit(AXyzProjectile* Projectile, FVector MovementDirection, const FHitResult& HitResult, FVector ResetLocation);
+	void OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, FVector ResetLocation);
+	void ResetThrowableProjectile(AXyzProjectile* Projectile, FVector ResetLocation);
+
 	FVector ProjectileResetLocation = FVector::ZeroVector;
 	TWeakObjectPtr<AXyzProjectile> CurrentProjectile;
 	FTimerHandle ThrowAnimationTimer;
-	bool bIsThrowing = false;
-
-	void OnThrowEnd() const;
-	void OnThrowAnimationFinished();
-	UFUNCTION()
-	void ProcessThrowableProjectileHit(AXyzProjectile* Projectile, const FVector MovementDirection, const FHitResult& HitResult, const FVector ResetLocation);
-	UFUNCTION()
-	void OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, const FVector ResetLocation);
-	void ResetThrowableProjectile(AXyzProjectile* Projectile, const FVector ResetLocation);
 };

@@ -11,10 +11,10 @@ void UAnimNotify_EnableMeleeHitReg::Notify(USkeletalMeshComponent* MeshComp, UAn
 {
 	Super::Notify(MeshComp, Animation);
 
-	const AXyzBaseCharacter* CharacterOwner = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
-	if (IsValid(CharacterOwner))
+	const AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
+	if (IsValid(BaseCharacter))
 	{
-		AMeleeWeaponItem* MeleeWeaponItem = CharacterOwner->GetCharacterEquipmentComponent()->GetCurrentMeleeWeapon();
+		AMeleeWeaponItem* MeleeWeaponItem = BaseCharacter->GetCharacterEquipmentComponent()->GetCurrentMeleeWeapon();
 		if (IsValid(MeleeWeaponItem))
 		{
 			MeleeWeaponItem->EnableHitRegistration(bIsHitRegistrationEnabled);

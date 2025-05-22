@@ -17,42 +17,41 @@ class XYZHOMEWORK_API AXyzPlayerController : public APlayerController
 
 public:
 	virtual void SetPawn(APawn* InPawn) override;
+	virtual void OnUnPossess() override;
+	virtual void Tick(float DeltaTime) override;
 	bool IgnoresFPCameraPitch() const;
-	void ShouldIgnoreFPCameraPitch(const bool bIgnoreFPCameraPitch_In)
-	{
-		bIgnoresFPCameraPitch = bIgnoreFPCameraPitch_In;
-	}
+	void ShouldIgnoreFPCameraPitch(bool bIgnoreFPCameraPitch_In) { bIgnoresFPCameraPitch = bIgnoreFPCameraPitch_In; }
 
 protected:
 	virtual void SetupInputComponent() override;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widgets")
-	TSubclassOf<UPlayerHUDWidget> PlayerHUDWidgetClass;
+	TSoftClassPtr<UPlayerHUDWidget> PlayerHUDWidgetClass;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widgets")
+	TSoftClassPtr<UUserWidget> MainMenuWidgetClass;
 
 private:
-	TWeakObjectPtr<class AXyzBaseCharacter> CachedBaseCharacter;
-	bool bIgnoresFPCameraPitch = false;
-	UPROPERTY()
-	UPlayerHUDWidget* PlayerHUDWidget;
-
 	void CreateAndInitializeHUDWidgets();
+	void RemoveHUDWidgets() const;
+	void ToggleMainMenu();
+	void OnInteractableObjectFound(FName ActionName);
 
 	void MoveForward(float Value);
 	void MoveRight(float Value);
 	void Turn(float Value);
 	void LookUp(float Value);
-	void ChangeCrouchState();
+	void Crouch();
+	void UnCrouch();
 	void Jump();
 	void StartSprint();
 	void StopSprint();
-	void ChangeProneState();
+	void ToggleProne();
 	void Mantle();
 	void SwimForward(float Value);
 	void SwimRight(float Value);
 	void SwimUp(float Value);
 	void Dive();
 	void ClimbLadderUp(float Value);
-	void InteractWithLadder();
-	void InteractWithZipline();
+	void UseEnvironmentActor();
 	void JumpOffRunnableWall();
 	void Slide();
 	void ReloadLevel();
@@ -68,7 +67,20 @@ private:
 	void ActivateNextWeaponMode();
 	void UsePrimaryMeleeAttack();
 	void UseSecondaryMeleeAttack();
+	void InteractWithObject();
+	void UseInventory();
+	void UseRadialMenu();
+	void QuickSaveGame();
+	void QuickLoadGame();
+	void TogglePlayerMouseInput();
 
 	void TurnAtRate(float Value);
 	void LookUpAtRate(float Value);
+
+	TWeakObjectPtr<class AXyzBaseCharacter> CachedBaseCharacter;
+	bool bIgnoresFPCameraPitch = false;
+	UPROPERTY()
+	UPlayerHUDWidget* PlayerHUDWidget;
+	UPROPERTY()
+	UUserWidget* MainMenuWidget;
 };

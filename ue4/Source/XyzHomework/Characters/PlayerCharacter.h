@@ -17,106 +17,99 @@ class XYZHOMEWORK_API APlayerCharacter : public AXyzBaseCharacter
 
 public:
 	explicit APlayerCharacter(const FObjectInitializer& ObjectInitializer);
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+
+#pragma region CAMERA
+
+protected:
+	UFUNCTION(Server, Reliable)
+	void Server_SetShouldSkipProneTimeline(bool bShouldSkipProneTimeline_In);
+	void UpdateProneCameraTimeline(float Value);
+	void UpdateAimingFOVTimeline(float Value);
+	void UpdateWallRunCameraTimeline(float Value);
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	class UCameraComponent* CameraComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	class USpringArmComponent* SpringArmComponent;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	float ProneCameraHeightOffset = -50.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	float ProneCameraProximityOffset = 200.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	float ProneCameraRightOffset = 50.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	UCurveFloat* ProneCameraTimelineCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	UCurveFloat* AimingFOVTimelineCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera")
+	UCurveFloat* WallRunCameraTimelineCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
+	float AimTurnModifier = 0.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Player|Camera", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
+	float AimLookUpModifier = 0.75f;
+
+	TWeakObjectPtr<APlayerCameraManager> CachedCameraManager;
+	FVector CachedSpringArmSocketOffset;
+	FVector CachedSpringArmTargetOffset;
+	FVector NewSpringArmSocketOffsetDelta;
+	FVector NewSpringArmTargetOffsetDelta;
+	FTimeline AimingFOVTimeline;
+	FTimeline WallRunCameraTimeline;
+	FTimeline ProneCameraTimeline;
+	UPROPERTY(Replicated)
+	bool bShouldSkipProneTimeline = false;
+	float DefaultCameraFOV = 0.f;
+	float TargetAimingFOV = 0.f;
+
+#pragma endregion
+
+#pragma region MOVEMENT / SWIMMING
+
+public:
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
-
-	// General Movement
-
 	virtual void MoveForward(float Value) override;
 	virtual void MoveRight(float Value) override;
 	virtual void Turn(float Value) override;
 	virtual void LookUp(float Value) override;
 	virtual void TurnAtRate(float Value) override;
 	virtual void LookUpAtRate(float Value) override;
-
-	// Jumping
-	virtual void Jump() override;
-	virtual bool CanJumpInternal_Implementation() const override;
-	virtual void OnJumped_Implementation() override;
-
-	// Swimming
-
+	virtual void ClimbLadderUp(float Value) override;
 	virtual void SwimForward(float Value) override;
 	virtual void SwimRight(float Value) override;
 	virtual void SwimUp(float Value) override;
-	virtual void Dive() override;
 
-	// Sliding
+#pragma endregion
 
+#pragma region SLIDING / WALL RUNNING
+
+public:
 	virtual void OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
-	// Crouching / Proning
-
-	virtual bool CanUnCrouch() override;
-	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual bool CanUnProne() override;
-	virtual void OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void OnEndProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-
-	// Interactive Actors
-
-	virtual void ClimbLadderUp(float Value) override;
-
-	// Wall Running
-
 	virtual void OnWallRunStart() override;
 	virtual void OnWallRunEnd() override;
+#pragma endregion
 
+#pragma region CROUCHING / PRONE
+
+public:
+	virtual bool CanChangeCrouchState() const override;
+	virtual void UnCrouch(bool bClientSimulation = false) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual bool CanChangeProneState() const override;
+	virtual void OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnStopProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+#pragma endregion
+
+#pragma region AIMING
 
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	class UCameraComponent* CameraComponent;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	class USpringArmComponent* SpringArmComponent;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	float ProneCameraHeightOffset = -50.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	float ProneCameraProximityOffset = 200.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	float ProneCameraRightOffset = 50.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	UCurveFloat* ProneCameraTimelineCurve;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	UCurveFloat* AimingFOVTimelineCurve;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera")
-	UCurveFloat* WallRunCameraTimelineCurve;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
-	float AimTurnModifier = 0.75f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "XYZ Character | Camera", meta = (ClampMin = 0.f, ClampMax = 1.f, UIMin = 0.f, UIMax = 1.f))
-	float AimLookUpModifier = 0.75f;
-
-	TWeakObjectPtr<APlayerCameraManager> CachedCameraManager;
-	float CameraHeight = 0.f;
-	FVector CachedLastVelocity = FVector(KINDA_SMALL_NUMBER, KINDA_SMALL_NUMBER, 1.f);
-	FVector CachedSpringArmSocketOffset = FVector::ZeroVector;
-	FVector CachedSpringArmTargetOffset = FVector::ZeroVector;
-	FVector NewSpringArmSocketOffsetDelta = FVector::ZeroVector;
-	FVector NewSpringArmTargetOffsetDelta = FVector::ZeroVector;
-	FTimeline AimingFOVTimeline;
-	FTimeline WallRunCameraTimeline;
-	FTimeline ProneCameraTimeline;
-	bool bShouldSkipProneTimeline = false;
-	float DefaultCameraFOV = 0.f;
-	float TargetAimingFOV = 0.f;
-
-	bool IsCameraManagerValid();
-
-	// Aiming
-
-	virtual void OnStartAimingInternal() override;
-	virtual void OnStopAimingInternal() override;
+	virtual void OnStartAiming_Implementation() override;
+	virtual void OnStopAiming_Implementation() override;
 	float GetAimTurnModifier() const;
 	float GetAimLookUpModifier() const;
-
-	// Timelines
-
-	UFUNCTION()
-	virtual void UpdateProneCameraTimeline(float Value);
-	UFUNCTION()
-	virtual void UpdateAimingFOVTimeline(float Value);
-	UFUNCTION()
-	virtual void UpdateWallRunCameraTimeline(float Value);
+#pragma endregion
 };

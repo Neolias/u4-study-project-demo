@@ -2,31 +2,78 @@
 
 #include "Characters/Controllers/XyzPlayerController.h"
 
+#include "SignificanceManager.h"
+#include "AbilitySystem/AttributeSets/XyzCharacterAttributeSet.h"
 #include "Characters/XyzBaseCharacter.h"
-#include "Components/CharacterComponents/CharacterAttributesComponent.h"
 #include "Components/CharacterComponents/CharacterEquipmentComponent.h"
+#include "GameFramework/PlayerInput.h"
 #include "Kismet/GameplayStatics.h"
-#include "UI/Widgets/PlayerHUDWidget.h"
-#include "UI/Widgets/ReticleWidget.h"
-#include "UI/Widgets/WeaponAmmoWidget.h"
-#include "UI/Widgets/CharacterAttributesWidget.h"
+#include "Subsystems/SaveSubsystem/SaveSubsystem.h"
+#include "UI/Widgets/PlayerHUD/CharacterAttributesWidget.h"
+#include "UI/Widgets/PlayerHUD/PlayerHUDWidget.h"
+#include "UI/Widgets/PlayerHUD/ReticleWidget.h"
+#include "UI/Widgets/PlayerHUD/WeaponAmmoWidget.h"
 
 void AXyzPlayerController::SetPawn(APawn* InPawn)
 {
 	Super::SetPawn(InPawn);
-	//checkf(InPawn->IsA<AXyzBaseCharacter>(), TEXT("AXyzPlayerController::SetPawn() should be used only with AXyzBaseCharacter"))
-	CachedBaseCharacter = StaticCast<AXyzBaseCharacter*>(InPawn);
-	if (CachedBaseCharacter.IsValid() && CachedBaseCharacter->IsLocallyControlled())
+
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (BaseCharacter)
 	{
+		BaseCharacter->OnInteractiveObjectFound.RemoveAll(this);
+		RemoveHUDWidgets();
+	}
+
+	if (!IsValid(InPawn))
+	{
+		CachedBaseCharacter.Reset();
+		return;
+	}
+
+	checkf(InPawn->IsA<AXyzBaseCharacter>(), TEXT("AXyzPlayerController::SetPawn(): AXyzPlayerController can only be used with AXyzBaseCharacter."))
+	BaseCharacter = StaticCast<AXyzBaseCharacter*>(InPawn);
+	CachedBaseCharacter = BaseCharacter;
+	if (BaseCharacter && IsLocalController())
+	{
+		BaseCharacter->OnInteractiveObjectFound.AddUObject(this, &AXyzPlayerController::OnInteractableObjectFound);
 		CreateAndInitializeHUDWidgets();
+	}
+}
+
+void AXyzPlayerController::OnUnPossess()
+{
+	Super::OnUnPossess();
+
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (BaseCharacter)
+	{
+		BaseCharacter->OnInteractiveObjectFound.RemoveAll(this);
+	}
+	CachedBaseCharacter.Reset();
+}
+
+void AXyzPlayerController::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	
+	if (USignificanceManager* SignificanceManager = FSignificanceManagerModule::Get(GetWorld()))
+	{
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		GetPlayerViewPoint(ViewLocation, ViewRotation);
+		FTransform ViewTransform(ViewRotation, ViewLocation);
+		TArray<FTransform> ViewPoints = {ViewTransform};
+		SignificanceManager->Update(ViewPoints);
 	}
 }
 
 bool AXyzPlayerController::IgnoresFPCameraPitch() const
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		return !CachedBaseCharacter->IsFirstPerson() || bIgnoresFPCameraPitch;
+		return !BaseCharacter->IsFirstPerson() || bIgnoresFPCameraPitch;
 	}
 	return true;
 }
@@ -38,14 +85,14 @@ void AXyzPlayerController::SetupInputComponent()
 	InputComponent->BindAxis("MoveRight", this, &AXyzPlayerController::MoveRight);
 	InputComponent->BindAxis("Turn", this, &AXyzPlayerController::Turn);
 	InputComponent->BindAxis("LookUp", this, &AXyzPlayerController::LookUp);
-	InputComponent->BindAction("InteractWithLadder", EInputEvent::IE_Pressed, this, &AXyzPlayerController::InteractWithLadder);
-	InputComponent->BindAction("InteractWithZipline", EInputEvent::IE_Pressed, this, &AXyzPlayerController::InteractWithZipline);
+	InputComponent->BindAction("UseEnvironmentActor", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UseEnvironmentActor);
 	InputComponent->BindAction("Mantle", EInputEvent::IE_Pressed, this, &AXyzPlayerController::Mantle);
 	InputComponent->BindAction("Jump", EInputEvent::IE_Pressed, this, &AXyzPlayerController::Jump);
-	InputComponent->BindAction("Crouch", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ChangeCrouchState);
+	InputComponent->BindAction("Prone", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ToggleProne);
+	InputComponent->BindAction("Crouch", EInputEvent::IE_Pressed, this, &AXyzPlayerController::Crouch);
+	InputComponent->BindAction("UnCrouch", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UnCrouch);
 	InputComponent->BindAction("Sprint", EInputEvent::IE_Pressed, this, &AXyzPlayerController::StartSprint);
 	InputComponent->BindAction("Sprint", EInputEvent::IE_Released, this, &AXyzPlayerController::StopSprint);
-	InputComponent->BindAction("Prone", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ChangeProneState);
 	InputComponent->BindAxis("SwimForward", this, &AXyzPlayerController::SwimForward);
 	InputComponent->BindAxis("SwimRight", this, &AXyzPlayerController::SwimRight);
 	InputComponent->BindAction("Dive", EInputEvent::IE_Pressed, this, &AXyzPlayerController::Dive);
@@ -66,6 +113,14 @@ void AXyzPlayerController::SetupInputComponent()
 	InputComponent->BindAction("ActivateNextWeaponMode", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ActivateNextWeaponMode);
 	InputComponent->BindAction("UsePrimaryMeleeAttack", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UsePrimaryMeleeAttack);
 	InputComponent->BindAction("UseSecondaryMeleeAttack", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UseSecondaryMeleeAttack);
+	FInputActionBinding& ToggleMenuBinding = InputComponent->BindAction("ToggleMainMenu", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ToggleMainMenu);
+	ToggleMenuBinding.bExecuteWhenPaused = true;
+	InputComponent->BindAction("InteractWithObject", EInputEvent::IE_Pressed, this, &AXyzPlayerController::InteractWithObject);
+	InputComponent->BindAction("UseInventory", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UseInventory);
+	InputComponent->BindAction("UseRadialMenu", EInputEvent::IE_Pressed, this, &AXyzPlayerController::UseRadialMenu);
+	InputComponent->BindAction("QuickSaveGame", EInputEvent::IE_Pressed, this, &AXyzPlayerController::QuickSaveGame);
+	InputComponent->BindAction("QuickLoadGame", EInputEvent::IE_Pressed, this, &AXyzPlayerController::QuickLoadGame);
+	InputComponent->BindAction("TogglePlayerMouseInput", EInputEvent::IE_Pressed, this, &AXyzPlayerController::TogglePlayerMouseInput);
 
 	InputComponent->BindAxis("TurnAtRate", this, &AXyzPlayerController::TurnAtRate);
 	InputComponent->BindAxis("LookUpAtRate", this, &AXyzPlayerController::LookUpAtRate);
@@ -73,332 +128,504 @@ void AXyzPlayerController::SetupInputComponent()
 
 void AXyzPlayerController::CreateAndInitializeHUDWidgets()
 {
-	if (!IsValid(PlayerHUDWidget) && IsValid(PlayerHUDWidgetClass))
+	if (!IsValid(MainMenuWidget) && MainMenuWidgetClass.LoadSynchronous())
 	{
-		PlayerHUDWidget = CreateWidget<UPlayerHUDWidget>(GetWorld(), PlayerHUDWidgetClass);
-		if (IsValid(PlayerHUDWidget))
-		{
-			PlayerHUDWidget->AddToViewport();
-		}
+		MainMenuWidget = CreateWidget<UUserWidget>(GetWorld(), MainMenuWidgetClass.LoadSynchronous());
 	}
 
-	if (IsValid(PlayerHUDWidget) && CachedBaseCharacter.IsValid())
+	if (!IsValid(PlayerHUDWidget) && PlayerHUDWidgetClass.LoadSynchronous())
 	{
-		UCharacterEquipmentComponent* CharacterEquipmentComponent = CachedBaseCharacter->GetCharacterEquipmentComponent();
+		PlayerHUDWidget = CreateWidget<UPlayerHUDWidget>(GetWorld(), PlayerHUDWidgetClass.LoadSynchronous());
+	}
 
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(PlayerHUDWidget) && IsValid(BaseCharacter))
+	{
+		UCharacterEquipmentComponent* CharacterEquipmentComponent = BaseCharacter->GetCharacterEquipmentComponent();
 		UReticleWidget* ReticleWidget = PlayerHUDWidget->GetReticleWidget();
 		if (IsValid(ReticleWidget))
 		{
-			CachedBaseCharacter->OnAimingStateChanged.AddUFunction(ReticleWidget, FName("OnAimingStateChanged"));
-			if (IsValid(CharacterEquipmentComponent))
-			{
-				CharacterEquipmentComponent->OnEquipmentItemChangedEvent.AddUFunction(ReticleWidget, FName("OnEquippedItemChanged"));
-			}
+			BaseCharacter->OnAimingEvent.AddUObject(ReticleWidget, &UReticleWidget::OnAimingStateChanged);
+			CharacterEquipmentComponent->OnEquipmentItemChangedEvent.AddUObject(ReticleWidget, &UReticleWidget::OnEquippedItemChanged);
 		}
 
 		UWeaponAmmoWidget* WeaponAmmoWidget = PlayerHUDWidget->GetWeaponAmmoWidget();
 		if (IsValid(WeaponAmmoWidget))
 		{
-			if (IsValid(CharacterEquipmentComponent))
-			{
-				CharacterEquipmentComponent->OnCurrentWeaponAmmoChangedEvent.AddUFunction(WeaponAmmoWidget, FName("OnWeaponAmmoChanged"));
-				CharacterEquipmentComponent->OnCurrentThrowableAmmoChangedEvent.AddUFunction(WeaponAmmoWidget, FName("OnThrowableAmmoChanged"));
-			}
+			CharacterEquipmentComponent->OnCurrentWeaponAmmoChangedEvent.AddUObject(WeaponAmmoWidget, &UWeaponAmmoWidget::OnWeaponAmmoChanged);
+			CharacterEquipmentComponent->OnCurrentThrowableAmmoChangedEvent.AddUObject(WeaponAmmoWidget, &UWeaponAmmoWidget::OnThrowableAmmoChanged);
 		}
 
 		UCharacterAttributesWidget* CharacterAttributesWidget = PlayerHUDWidget->GetCharacterAttributesWidget();
 		if (IsValid(CharacterAttributesWidget))
 		{
-			UCharacterAttributesComponent* CharacterAttributesComponent = CachedBaseCharacter->GetCharacterAttributesComponent();
-			if (IsValid(CharacterAttributesComponent))
-			{
-				CharacterAttributesComponent->OnHealthChanged.AddUFunction(CharacterAttributesWidget, FName("OnHealthChanged"));
-				CharacterAttributesComponent->OnStaminaChanged.AddUFunction(CharacterAttributesWidget, FName("OnStaminaChanged"));
-				CharacterAttributesComponent->OnOxygenChanged.AddUFunction(CharacterAttributesWidget, FName("OnOxygenChanged"));
-			}
+			UXyzCharacterAttributeSet* AttributeSet = BaseCharacter->GetCharacterAttributes();
+			AttributeSet->OnHealthChangedEvent.AddUObject(CharacterAttributesWidget, &UCharacterAttributesWidget::OnHealthChanged);
 		}
 
 		UCharacterAttributesWidget* CharacterAttributesCenterWidget = PlayerHUDWidget->GetCharacterAttributesCenterWidget();
 		if (IsValid(CharacterAttributesCenterWidget))
 		{
-			UCharacterAttributesComponent* CharacterAttributesComponent = CachedBaseCharacter->GetCharacterAttributesComponent();
-			if (IsValid(CharacterAttributesComponent))
+			UXyzCharacterAttributeSet* AttributeSet = BaseCharacter->GetCharacterAttributes();
+			AttributeSet->OnStaminaChangedEvent.AddUObject(CharacterAttributesCenterWidget, &UCharacterAttributesWidget::OnStaminaChanged);
+			AttributeSet->OnOxygenChangedEvent.AddUObject(CharacterAttributesCenterWidget, &UCharacterAttributesWidget::OnOxygenChanged);
+		}
+
+		PlayerHUDWidget->AddToViewport();
+	}
+
+	SetInputMode(FInputModeGameOnly{});
+	bShowMouseCursor = false;
+}
+
+void AXyzPlayerController::RemoveHUDWidgets() const
+{
+	if (IsValid(MainMenuWidget))
+	{
+		MainMenuWidget->RemoveFromParent();
+	}
+
+	if (IsValid(PlayerHUDWidget))
+	{
+		AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+		if (IsValid(BaseCharacter))
+		{
+			UCharacterEquipmentComponent* CharacterEquipmentComponent = BaseCharacter->GetCharacterEquipmentComponent();
+			const UReticleWidget* ReticleWidget = PlayerHUDWidget->GetReticleWidget();
+			if (IsValid(ReticleWidget))
 			{
-				CharacterAttributesComponent->OnHealthChanged.AddUFunction(CharacterAttributesCenterWidget, FName("OnHealthChanged"));
-				CharacterAttributesComponent->OnStaminaChanged.AddUFunction(CharacterAttributesCenterWidget, FName("OnStaminaChanged"));
-				CharacterAttributesComponent->OnOxygenChanged.AddUFunction(CharacterAttributesCenterWidget, FName("OnOxygenChanged"));
+				BaseCharacter->OnAimingEvent.RemoveAll(ReticleWidget);
+				CharacterEquipmentComponent->OnEquipmentItemChangedEvent.RemoveAll(ReticleWidget);
+			}
+
+			const UWeaponAmmoWidget* WeaponAmmoWidget = PlayerHUDWidget->GetWeaponAmmoWidget();
+			if (IsValid(WeaponAmmoWidget))
+			{
+				CharacterEquipmentComponent->OnCurrentWeaponAmmoChangedEvent.RemoveAll(WeaponAmmoWidget);
+				CharacterEquipmentComponent->OnCurrentThrowableAmmoChangedEvent.RemoveAll(WeaponAmmoWidget);
+			}
+
+			const UCharacterAttributesWidget* CharacterAttributesWidget = PlayerHUDWidget->GetCharacterAttributesWidget();
+			if (IsValid(CharacterAttributesWidget))
+			{
+				UXyzCharacterAttributeSet* AttributeSet = BaseCharacter->GetCharacterAttributes();
+				AttributeSet->OnHealthChangedEvent.RemoveAll(CharacterAttributesWidget);
+			}
+
+			const UCharacterAttributesWidget* CharacterAttributesCenterWidget = PlayerHUDWidget->GetCharacterAttributesCenterWidget();
+			if (IsValid(CharacterAttributesCenterWidget))
+			{
+				UXyzCharacterAttributeSet* AttributeSet = BaseCharacter->GetCharacterAttributes();
+				AttributeSet->OnStaminaChangedEvent.RemoveAll(CharacterAttributesCenterWidget);
+				AttributeSet->OnOxygenChangedEvent.RemoveAll(CharacterAttributesCenterWidget);
 			}
 		}
+
+		PlayerHUDWidget->RemoveFromParent();
 	}
 }
 
-void AXyzPlayerController::MoveForward(const float Value)
+void AXyzPlayerController::ToggleMainMenu()
 {
-	if (CachedBaseCharacter.IsValid())
+	if (!IsValid(MainMenuWidget) || !IsValid(PlayerHUDWidget))
 	{
-		CachedBaseCharacter->MoveForward(Value);
+		return;
+	}
+
+	if (MainMenuWidget->IsVisible())
+	{
+		MainMenuWidget->RemoveFromParent();
+		PlayerHUDWidget->AddToViewport();
+		SetInputMode(FInputModeGameOnly{});
+		SetPause(false);
+		bShowMouseCursor = false;
+	}
+	else
+	{
+		MainMenuWidget->AddToViewport();
+		PlayerHUDWidget->RemoveFromParent();
+		SetInputMode(FInputModeGameAndUI{});
+		SetPause(true);
+		bShowMouseCursor = true;
 	}
 }
 
-void AXyzPlayerController::MoveRight(const float Value)
+void AXyzPlayerController::OnInteractableObjectFound(FName ActionName)
 {
-	if (CachedBaseCharacter.IsValid())
+	if (!IsValid(PlayerInput) || !IsValid(PlayerHUDWidget))
 	{
-		CachedBaseCharacter->MoveRight(Value);
+		return;
+	}
+
+	TArray<FInputActionKeyMapping> ActionKeys = PlayerInput->GetKeysForAction(ActionName);
+	bool HasAnyKeys = ActionKeys.Num() != 0;
+	if (HasAnyKeys)
+	{
+		FName ActionKey = ActionKeys[0].Key.GetFName();
+		PlayerHUDWidget->SetInteractableKeyText(ActionKey);
+	}
+	PlayerHUDWidget->ShowInteractableKey(HasAnyKeys);
+}
+
+void AXyzPlayerController::MoveForward(float Value)
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->MoveForward(Value);
 	}
 }
 
-void AXyzPlayerController::Turn(const float Value)
+void AXyzPlayerController::MoveRight(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->Turn(Value);
+		BaseCharacter->MoveRight(Value);
 	}
 }
 
-void AXyzPlayerController::LookUp(const float Value)
+void AXyzPlayerController::Turn(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->LookUp(Value);
+		BaseCharacter->Turn(Value);
 	}
 }
 
-void AXyzPlayerController::ChangeCrouchState()
+void AXyzPlayerController::LookUp(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ChangeCrouchState();
+		BaseCharacter->LookUp(Value);
 	}
 }
 
-void AXyzPlayerController::InteractWithLadder()
+void AXyzPlayerController::Crouch()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->InteractWithLadder();
+		BaseCharacter->Crouch();
 	}
 }
 
-void AXyzPlayerController::InteractWithZipline()
+void AXyzPlayerController::UnCrouch()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->InteractWithZipline();
-	}
-}
-
-void AXyzPlayerController::Mantle()
-{
-	if (CachedBaseCharacter.IsValid())
-	{
-		CachedBaseCharacter->Mantle();
+		BaseCharacter->UnCrouch();
 	}
 }
 
 void AXyzPlayerController::Jump()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->Jump();
+		BaseCharacter->StartJump();
 	}
 }
 
 void AXyzPlayerController::StartSprint()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->StartSprint();
+		BaseCharacter->StartSprint();
 	}
 }
 
 void AXyzPlayerController::StopSprint()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->StopSprint();
+		BaseCharacter->StopSprint();
 	}
 }
 
-void AXyzPlayerController::ChangeProneState()
+void AXyzPlayerController::ToggleProne()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ChangeProneState();
+		BaseCharacter->ToggleProne();
+	}
+}
+
+void AXyzPlayerController::Mantle()
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->StartMantle();
 	}
 }
 
 void AXyzPlayerController::SwimForward(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->SwimForward(Value);
+		BaseCharacter->SwimForward(Value);
 	}
 }
 
 void AXyzPlayerController::SwimRight(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->SwimRight(Value);
+		BaseCharacter->SwimRight(Value);
 	}
 }
 
 void AXyzPlayerController::SwimUp(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->SwimUp(Value);
+		BaseCharacter->SwimUp(Value);
 	}
 }
 
 void AXyzPlayerController::Dive()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->Dive();
+		BaseCharacter->StartDive();
 	}
 }
 
 void AXyzPlayerController::ClimbLadderUp(float Value)
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ClimbLadderUp(Value);
+		BaseCharacter->ClimbLadderUp(Value);
+	}
+}
+
+void AXyzPlayerController::UseEnvironmentActor()
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->ToggleUseEnvironmentActor();
 	}
 }
 
 void AXyzPlayerController::JumpOffRunnableWall()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->JumpOffRunnableWall();
+		BaseCharacter->JumpOffRunnableWall();
 	}
 }
 
 void AXyzPlayerController::Slide()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->StartSlide();
+		BaseCharacter->StartSlide();
 	}
 }
 
 void AXyzPlayerController::ReloadLevel()
 {
-	const UWorld* World = GetWorld();
-	const FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(World);
-	UGameplayStatics::OpenLevel(World, FName(*CurrentLevelName));
+	if (IsNetMode(NM_Standalone))
+	{
+		const UWorld* World = GetWorld();
+		FString CurrentLevelName = UGameplayStatics::GetCurrentLevelName(World);
+		USaveSubsystem* SaveSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<USaveSubsystem>();
+		SaveSubsystem->GetGameSaveDataMutable().bIsSerialized = false; // force disable loading saved data
+		UGameplayStatics::OpenLevel(World, FName(*CurrentLevelName));
+	}
 }
 
 void AXyzPlayerController::StartWeaponFire()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->StartWeaponFire();
+		BaseCharacter->StartWeaponFire();
 	}
 }
 
 void AXyzPlayerController::StopFire()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->StopWeaponFire();
+		BaseCharacter->StopWeaponFire();
 	}
 }
 
 void AXyzPlayerController::StartAim()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->SetWantsToAim();
+		BaseCharacter->StartAiming();
 	}
 }
 
 void AXyzPlayerController::EndAim()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ResetWantsToAim();
+		BaseCharacter->StopAiming();
 	}
 }
 
 void AXyzPlayerController::ReloadWeapon()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ReloadWeapon();
+		BaseCharacter->StartWeaponReload();
 	}
 }
 
 void AXyzPlayerController::DrawNextEquipmentItem()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->DrawNextEquipmentItem();
+		BaseCharacter->DrawNextItem();
 	}
 }
 
 void AXyzPlayerController::DrawPreviousEquipmentItem()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->DrawPreviousEquipmentItem();
+		BaseCharacter->DrawPreviousItem();
 	}
 }
 
 void AXyzPlayerController::TogglePrimaryItem()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->TogglePrimaryItem();
+		BaseCharacter->TogglePrimaryItem();
 	}
 }
 
 void AXyzPlayerController::ThrowItem()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ThrowItem();
+		BaseCharacter->StartItemThrow();
 	}
 }
 
 void AXyzPlayerController::ActivateNextWeaponMode()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->ActivateNextWeaponMode();
+		BaseCharacter->ActivateNextWeaponMode();
 	}
 }
 
 void AXyzPlayerController::UsePrimaryMeleeAttack()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->UsePrimaryMeleeAttack();
+		BaseCharacter->StartPrimaryMeleeAttack();
 	}
 }
 
 void AXyzPlayerController::UseSecondaryMeleeAttack()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->UseSecondaryMeleeAttack();
+		BaseCharacter->StartSecondaryMeleeAttack();
 	}
 }
 
-void AXyzPlayerController::TurnAtRate(const float Value)
+void AXyzPlayerController::InteractWithObject()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->TurnAtRate(Value);
+		BaseCharacter->InteractWithObject();
 	}
 }
 
-void AXyzPlayerController::LookUpAtRate(const float Value)
+void AXyzPlayerController::UseInventory()
 {
-	if (CachedBaseCharacter.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
 	{
-		CachedBaseCharacter->LookUpAtRate(Value);
+		BaseCharacter->UseInventory(this);
+	}
+}
+
+void AXyzPlayerController::UseRadialMenu()
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->UseRadialMenu(this);
+	}
+}
+
+void AXyzPlayerController::QuickSaveGame()
+{
+	if (IsNetMode(NM_Standalone))
+	{
+		USaveSubsystem* SaveSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<USaveSubsystem>();
+		SaveSubsystem->SaveGame();
+	}
+}
+
+void AXyzPlayerController::QuickLoadGame()
+{
+	if (IsNetMode(NM_Standalone))
+	{
+		USaveSubsystem* SaveSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<USaveSubsystem>();
+		SaveSubsystem->LoadLastGame();
+	}
+}
+
+void AXyzPlayerController::TogglePlayerMouseInput()
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->TogglePlayerMouseInput(this);
+	}
+}
+
+void AXyzPlayerController::TurnAtRate(float Value)
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->TurnAtRate(Value);
+	}
+}
+
+void AXyzPlayerController::LookUpAtRate(float Value)
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->LookUpAtRate(Value);
 	}
 }

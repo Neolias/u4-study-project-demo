@@ -13,8 +13,20 @@
 				"UMG",
 				"AIModule",
 				"GameplayTasks",
-				"NavigationSystem"
+				"NavigationSystem",
+				"CoreUObject",
+				"GameplayAbilities"
 			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "OnlineSubsystemSteam",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
 		}
 	]
 }

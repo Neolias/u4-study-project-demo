@@ -18,9 +18,9 @@ public:
 	UBTService_LookForTarget();
 
 protected:
+	virtual void TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) override;
+	bool CanSeeTarget(AAIController* AIController, AActor* CurrentTarget) const;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI parameters")
 	float TraceRange = 5000.f;
-
-	virtual void TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) override;
-	bool CanSeeTarget(AAIController* AIController) const;
 };

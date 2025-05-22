@@ -10,7 +10,7 @@ UAIPatrollingComponent::UAIPatrollingComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-bool UAIPatrollingComponent::GetClosestWayPoint(FVector& ClosestWayPoint, const FVector CurrentLocation)
+bool UAIPatrollingComponent::GetClosestWayPoint(FVector& ClosestWayPoint, FVector CurrentLocation)
 {
 	if (!IsValid(PatrollingPath))
 	{
@@ -18,19 +18,19 @@ bool UAIPatrollingComponent::GetClosestWayPoint(FVector& ClosestWayPoint, const 
 	}
 
 	const TArray<FVector>& WayPoints = PatrollingPath->GetWayPoints();
-	const int32 WayPointsCount = WayPoints.Num();
+	int32 WayPointsCount = WayPoints.Num();
 	if (WayPointsCount < 1)
 	{
 		return false;
 	}
 
-	const FTransform PathTransform = PatrollingPath->GetActorTransform();
+	FTransform PathTransform = PatrollingPath->GetActorTransform();
 	float MaxDistanceSquared = FLT_MAX;
 
 	for (int i = 0; i < WayPointsCount; ++i)
 	{
-		const FVector WayPointLocation = PathTransform.TransformPosition(WayPoints[i]);
-		const float DistanceSquared = (WayPointLocation - CurrentLocation).SizeSquared();
+		FVector WayPointLocation = PathTransform.TransformPosition(WayPoints[i]);
+		float DistanceSquared = (WayPointLocation - CurrentLocation).SizeSquared();
 		if (DistanceSquared < MaxDistanceSquared)
 		{
 			MaxDistanceSquared = DistanceSquared;
@@ -50,7 +50,7 @@ bool UAIPatrollingComponent::GetNextWayPoint(FVector& NextWayPoint)
 	}
 
 	const TArray<FVector>& WayPoints = PatrollingPath->GetWayPoints();
-	const int32 WayPointsCount = WayPoints.Num();
+	int32 WayPointsCount = WayPoints.Num();
 	if (WayPointsCount < 2)
 	{
 		return false;
@@ -89,7 +89,7 @@ bool UAIPatrollingComponent::GetNextWayPoint(FVector& NextWayPoint)
 		break;
 	}
 
-	const FTransform PathTransform = PatrollingPath->GetActorTransform();
+	FTransform PathTransform = PatrollingPath->GetActorTransform();
 	NextWayPoint = PathTransform.TransformPosition(WayPoints[CurrentWayPointIndex]);
 	return true;
 }

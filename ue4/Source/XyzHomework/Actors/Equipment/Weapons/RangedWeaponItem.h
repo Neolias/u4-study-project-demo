@@ -9,26 +9,26 @@
 
 class UWeaponMuzzleComponent;
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged, int32)
-DECLARE_MULTICAST_DELEGATE(FOnWeaponReloaded)
-DECLARE_MULTICAST_DELEGATE(FOnMagazineEmpty)
-
 USTRUCT(BlueprintType)
 struct FShotInfo
 {
 	GENERATED_BODY()
 
-	FShotInfo() : Location_Mul_10(FVector::ZeroVector), Direction(FVector::ZeroVector) {};
-	FShotInfo(FVector Location, FVector Direction) : Location_Mul_10(Location * 10.0f), Direction(Direction) {};
+	FShotInfo()
+		: Location_Mul_10(FVector::ZeroVector),
+		  Direction(FVector::ZeroVector) {};
 
-	UPROPERTY()
-	FVector_NetQuantize100 Location_Mul_10;
-
-	UPROPERTY()
-	FVector_NetQuantizeNormal Direction;
+	FShotInfo(FVector Location, FVector Direction)
+		: Location_Mul_10(Location * 10.0f),
+		  Direction(Direction) {};
 
 	FVector GetLocation() const { return Location_Mul_10 * 0.1f; }
 	FVector GetDirection() const { return Direction; }
+
+	UPROPERTY()
+	FVector_NetQuantize100 Location_Mul_10;
+	UPROPERTY()
+	FVector_NetQuantizeNormal Direction;
 };
 
 UCLASS()
@@ -37,84 +37,73 @@ class XYZHOMEWORK_API ARangedWeaponItem : public AEquipmentItem
 	GENERATED_BODY()
 
 public:
-	FOnAmmoChanged OnAmmoChanged;
-	FOnWeaponReloaded OnWeaponReloaded;
-	FOnMagazineEmpty OnMagazineEmpty;
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChangedEvent, int32)
+	DECLARE_MULTICAST_DELEGATE(FOnWeaponReloadedEvent)
+	DECLARE_MULTICAST_DELEGATE(FOnMagazineEmptyEvent)
+	DECLARE_MULTICAST_DELEGATE(FOnShotEndEvent)
+	FOnAmmoChangedEvent OnAmmoChangedEvent;
+	FOnWeaponReloadedEvent OnWeaponReloadedEvent;
+	FOnMagazineEmptyEvent OnMagazineEmptyEvent;
+	FOnShotEndEvent OnShotEndEvent;
 
 	ARangedWeaponItem();
-	virtual void BeginPlay() override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OUT OutLifetimeProps) const override;
 	const FWeaponModeParameters* GetWeaponModeParameters(int32 ModeIndex = -1) const;
-	const TArray<FWeaponModeParameters>* GetWeaponModesArray() const { return &WeaponModes; }
+	const TArray<FWeaponModeParameters>& GetWeaponModesArray() const { return WeaponModes; }
 	int32 GetCurrentWeaponModeIndex() const { return CurrentWeaponModeIndex; }
 	int32 GetDefaultWeaponModeIndex() const { return DefaultWeaponModeIndex; }
-	void SetCurrentWeaponMode(int32 ModeIndex);
+	void SetCurrentWeaponMode(int32 ModeIndex, bool bIsAuthority = false);
 	USkeletalMeshComponent* GetMesh() const { return MeshComponent; }
 	UWeaponMuzzleComponent* GetMuzzleComponent() const { return MuzzleComponent; }
-	bool IsReloading() const { return bIsReloading; }
-	EWeaponAmmoType GetAmmoType() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->AmmoType : EWeaponAmmoType::None; }
-	int32 GetMagazineSize() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->MagazineSize : 1; }
-	EWeaponReloadType GetReloadType() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->ReloadType : EWeaponReloadType::ByClip; }
-	FName GetReloadLoopStartSectionName() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->ReloadLoopStartSectionName : FName("ReloadLoopStart"); }
-	FName GetReloadEndSectionName() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->ReloadEndSectionName : FName("ReloadEnd"); }
-	UAnimMontage* GetWeaponReloadAnimMontage() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->IronsightsWeaponReloadAnimMontage : nullptr; }
-	UAnimMontage* GetCharacterReloadAnimMontage() { return IsCurrentWeaponModeValid() ? CurrentWeaponMode->IronsightsCharacterReloadAnimMontage : nullptr; }
-	int32 GetCurrentAmmo() { return IsCurrentWeaponModeValid() ? CurrentWeaponAmmo[(int32)CurrentWeaponMode->AmmoType] : 0; }
+	virtual EWeaponAmmoType GetAmmoType() override;
+	int32 GetMagazineSize() const;
+	EWeaponReloadType GetReloadType() const;
+	FName GetReloadLoopStartSectionName() const;
+	FName GetReloadEndSectionName() const;
+	UAnimMontage* GetWeaponReloadAnimMontage() const;
+	UAnimMontage* GetCharacterReloadAnimMontage() const;
+	int32 GetCurrentAmmo();
 	void SetCurrentAmmo(int32 AmmoAmount);
 	bool IsFiring() const { return bIsFiring; }
 	bool CanFire() const;
 	void StartFire();
 	void StopFire();
 	void MakeOneShot();
-	FRotator GetShotDirection(OUT FRotator ViewPointRotation) const;
+	FRotator GetShotDirection(FRotator ViewPointRotation) const;
 	FTransform GetForeGripSocketTransform() const;
 	float GetReloadingWalkSpeed() const { return ReloadingWalkSpeed; }
-	void StartAutoReload() const;
 	void StartReload();
-	void EndReload(bool bIsSuccess);
+	void StopReload();
+	void OnReloadComplete();
+
+	//@ SaveSubsystemInterface
+	virtual void OnLevelDeserialized_Implementation() override;
+	//~ SaveSubsystemInterface
 
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Modes", meta = (ClampMin = 0, UIMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon", meta = (ClampMin = 0, UIMin = 0))
 	int32 DefaultWeaponModeIndex = 0;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Modes")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	TArray<FWeaponModeParameters> WeaponModes;
-	UPROPERTY(EditAnywhere, Category = "Weapon Parameters | Reloading", meta = (ClampMin = 0.f, UIMin = 0.f))
+	UPROPERTY(EditAnywhere, Category = "Equipment Item|Ranged Weapon", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float ReloadingWalkSpeed = 200.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Mesh")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	USkeletalMeshComponent* MeshComponent;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Mesh")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	FName ForeGripSocketName = "ForeGripSocket";
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Parameters | Mesh")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	FVector ForeGripOffsetFromSocket = FVector(9.f, 0.f, 0.f);
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon Parameters | Muzzle Component")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UWeaponMuzzleComponent* MuzzleComponent;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Muzzle Component")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	FName MuzzleSocketName = "MuzzleSocket";
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Animations")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	UAnimMontage* CharacterFireMontage;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Animations")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	UAnimMontage* WeaponFireMontage;
 
-	FTimerHandle OneShotTimer;
-	FTimerHandle ReloadTimer;
-	FTimerHandle OnShotEndTimer;
-	UPROPERTY(ReplicatedUsing = OnRep_IsReloading)
-	bool bIsReloading = false;
-	UFUNCTION()
-	void OnRep_IsReloading();
-	bool bIsFiring = false;
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponModeIndex)
-	int32 CurrentWeaponModeIndex = 0;
-	UFUNCTION()
-	void OnRep_CurrentWeaponModeIndex();
-	const FWeaponModeParameters* CurrentWeaponMode;
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponAmmo)
-	TArray<int32> CurrentWeaponAmmo;
-	UFUNCTION()
-	void OnRep_CurrentWeaponAmmo(TArray<int32> CurrentWeaponAmmo_Old);
-
-	void Loadout();
-	bool IsCurrentWeaponModeValid();
+private:
+	void OnAmmoChanged();
 	void OnMakeOneShot(const TArray<FShotInfo>& ShotInfoArray);
 	void OnShotEnd();
 	UFUNCTION(Server, Reliable)
@@ -122,5 +111,18 @@ protected:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_OnMakeOneShot(const TArray<FShotInfo>& ShotInfoArray);
 	UFUNCTION(Server, Reliable)
-	void Server_SetCurrentWeaponMode(const int32 ModeIndex);
+	void Server_SetCurrentWeaponMode(int32 ModeIndex);
+
+	FTimerHandle OneShotTimer;
+	FTimerHandle OnShotEndTimer;
+	bool bIsFiring = false;
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponModeIndex, SaveGame)
+	int32 CurrentWeaponModeIndex = 0;
+	UFUNCTION()
+	void OnRep_CurrentWeaponModeIndex();
+	FWeaponModeParameters* CurrentWeaponMode;
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponAmmo, SaveGame)
+	TArray<int32> CurrentWeaponAmmo;
+	UFUNCTION()
+	void OnRep_CurrentWeaponAmmo(TArray<int32> CurrentWeaponAmmo_Old);
 };

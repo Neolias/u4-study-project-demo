@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "AI/Controllers/XyzAIController.h"
 
 #include "Perception/AIPerceptionComponent.h"
@@ -12,11 +11,16 @@ AXyzAIController::AXyzAIController()
 	SetPerceptionComponent(*NewPerceptionComponent);
 }
 
-AActor* AXyzAIController::GetClosestSensedActor(const TSubclassOf<UAISense> SenseClass, const FAISenseAffiliationFilter& AffiliationFilter) const
+AActor* AXyzAIController::GetClosestSensedActor(TSubclassOf<UAISense> SenseClass, const FAISenseAffiliationFilter& AffiliationFilter) const
 {
+	if (!SenseClass)
+	{
+		return nullptr;
+	}
+
 	APawn* CurrentPawn = GetPawn();
 
-	if (!IsValid(CurrentPawn) || !IsValid(PerceptionComponent))
+	if (!IsValid(CurrentPawn) || !PerceptionComponent)
 	{
 		return nullptr;
 	}
@@ -26,7 +30,7 @@ AActor* AXyzAIController::GetClosestSensedActor(const TSubclassOf<UAISense> Sens
 
 	AActor* SensedActor = nullptr;
 	float MaxDistanceSquared = FLT_MAX;
-	const FVector PawnLocation = CurrentPawn->GetActorLocation();
+	FVector PawnLocation = CurrentPawn->GetActorLocation();
 
 	const IGenericTeamAgentInterface* TeamAgentInterface = Cast<IGenericTeamAgentInterface>(CurrentPawn);
 
@@ -34,33 +38,33 @@ AActor* AXyzAIController::GetClosestSensedActor(const TSubclassOf<UAISense> Sens
 	{
 		if (!AffiliationFilter.ShouldDetectAll() && TeamAgentInterface)
 		{
-			const ETeamAttitude::Type TeamAttitude = TeamAgentInterface->GetTeamAttitudeTowards(*Actor);
+			ETeamAttitude::Type TeamAttitude = TeamAgentInterface->GetTeamAttitudeTowards(*Actor);
 			switch (TeamAttitude)
 			{
-			case ETeamAttitude::Hostile:
-				if (!AffiliationFilter.bDetectEnemies)
-				{
+				case ETeamAttitude::Hostile:
+					if (!AffiliationFilter.bDetectEnemies)
+					{
+						continue;
+					}
+					break;
+				case ETeamAttitude::Neutral:
+					if (!AffiliationFilter.bDetectNeutrals)
+					{
+						continue;
+					}
+					break;
+				case ETeamAttitude::Friendly:
+					if (!AffiliationFilter.bDetectFriendlies)
+					{
+						continue;
+					}
+					break;
+				default:
 					continue;
-				}
-				break;
-			case ETeamAttitude::Neutral:
-				if (!AffiliationFilter.bDetectNeutrals)
-				{
-					continue;
-				}
-				break;
-			case ETeamAttitude::Friendly:
-				if (!AffiliationFilter.bDetectFriendlies)
-				{
-					continue;
-				}
-				break;
-			default:
-				continue;
 			}
 		}
 
-		const float DistanceSquared = (PawnLocation - Actor->GetActorLocation()).SizeSquared();
+		float DistanceSquared = (PawnLocation - Actor->GetActorLocation()).SizeSquared();
 		if (DistanceSquared < MaxDistanceSquared)
 		{
 			MaxDistanceSquared = DistanceSquared;
@@ -73,21 +77,17 @@ AActor* AXyzAIController::GetClosestSensedActor(const TSubclassOf<UAISense> Sens
 
 void AXyzAIController::OnPawnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
-	if (!IsValid(PerceptionComponent))
+	if (!PerceptionComponent)
 	{
 		return;
 	}
 
-	const FAISenseID SenseID = UAISense::GetSenseID<UAISense_Damage>();
-	const UAISenseConfig_Damage* SenseConfig = Cast<UAISenseConfig_Damage>(PerceptionComponent->GetSenseConfig(SenseID));
-	if (!IsValid(SenseConfig))
+	FAISenseID SenseID = UAISense::GetSenseID<UAISense_Damage>();
+	if (const UAISenseConfig_Damage* SenseConfig = Cast<UAISenseConfig_Damage>(PerceptionComponent->GetSenseConfig(SenseID)))
 	{
-		return;
-	}
-
-	const UAISense_Damage* Sense = NewObject<UAISense_Damage>(SenseConfig->GetSenseImplementation());
-	if (IsValid(Sense))
-	{
-		Sense->ReportDamageEvent(GetWorld(), DamagedActor, DamageCauser, Damage, DamageCauser->GetActorLocation(), DamagedActor->GetActorLocation());
+		if (const UAISense_Damage* Sense = NewObject<UAISense_Damage>(SenseConfig->GetSenseImplementation()))
+		{
+			Sense->ReportDamageEvent(GetWorld(), DamagedActor, DamageCauser, Damage, DamageCauser->GetActorLocation(), DamagedActor->GetActorLocation());
+		}
 	}
 }

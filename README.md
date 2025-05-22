@@ -1,45 +1,52 @@
-# U4 Study Project Demo
- Hello! This is the repository of my U4 study project that I am currently working on. 
- You can download the repository and test the game by yourself or you can take a look at the 5 minutes demo video I created:
+# UE4 Study Project Demo
 
- [![Link](https://img.youtube.com/vi/TFxdaA3Rt28/0.jpg)](https://www.youtube.com/watch?v=TFxdaA3Rt28)
+![Gym](Gym.png)
 
-Update: Now replication is added for most mechanics. [See changes here](https://github.com/Neolias/u4-study-project-demo/commit/58cf7afe0aa1f4a7bbbfac04d3d44b0647f1b81a)
+Hello! I started working on this study project as a part of the Unreal Engine 4 course ([XYZ School](https://www.school-xyz.com/main_eng)) in the beginning of 2024.  
+Using the knowledge gained during the course and my independent learning, I improved it and extended most of the features.
+
+Code samples:  
+[BaseCharacter.h](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Characters/XyzBaseCharacter.h)  
+[BaseCharacter.cpp](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Characters/XyzBaseCharacter.cpp)  
+[CharacterMovement.h](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/MovementComponents/XyzBaseCharMovementComponent.h)  
+[CharacterMovement.cpp](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/MovementComponents/XyzBaseCharMovementComponent.cpp)  
+[EquipmentComponent.h](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/CharacterComponents/CharacterEquipmentComponent.h)  
+[EquipmentComponent.cpp](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/CharacterComponents/CharacterEquipmentComponent.cpp)  
+
+Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.com/watch?v=TFxdaA3Rt28)
 
 ## Controls
-WASD - Movement
+*Movement:*  
+**WASD:** Movement (Walking, Swimming, Climbing ladders)  
+**Shift:** Sprint  
+**Shift + Ctrl (or Ctrl if sprinting):** Slide  
+**Ctrl:** Crouch / Swim Down  
+**Ctrl + Ctrl (or Ctrl if crouching):** Prone  
+**Space:** Jump / Swim Up / UnCrouch / UnProne / Mantle / Use Ladders and Ziplines  
 
-Shift - Sprint
+*Equipment:*  
+**RMB:** Aim / Secondary Melee Attack  
+**LMB:** Shoot (Can shoot only while aiming) / Primary Melee Attack  
+**Scroll Wheel:** Change Weapons  
+**Q:** Toggle Primary Item (Grenade)  
+**Q + LMB (or LMB if equipped):** Throw Grenade  
+**E:** Change Weapon Mode (Currently only Rifle has modes)  
+**R:** Reload Current Weapon  
 
-Shift + Ctrl (or Ctrl if sprinting) - Slide
+*UI:*  
+**F:** Use Smart Object (Pickup items, Doors) 
+**I:** Toggle Inventory  
+**X:** Radial Menu  
+**TAB:** Online Sessions  
+**Z:** Toggle Mouse Cursor  
 
-Ctrl - Crouch / Swim Down
-
-Ctrl + Ctrl (or Ctrl if crouching) - Prone
-
-Space - Jump / Swim Up / UnCrouch / UnProne / Mantle / Use Ladders and Ziplines
-
-RMB - Aim
-
-LMB - Shoot (Can shoot only while aiming)
-
-Scroll Wheel - Change Weapons
-
-Q - Toggle Primary Item (Grenade)
-
-Q + LMB (or LMB if equipped)- Throw Grenade
-
-E - Change Weapon Modes (Currently only Rifle has modes)
-
-R - Reload Current Weapon
-
-L - Reload Current Level
+*Other:*  
+**L:** Reload Current Level (Only in a standalone game)  
+**T:** Quick Save (Only in a standalone game)  
+**Y:** Quick Game (Only in a standalone game)  
 
 ## Console Commands
-EnableDebugCategory CharacterAttributes 1
-
-EnableDebugCategory AIAttributes 1
-
-EnableDebugCategory RangedWeapon 1
-
-EnableDebugCategory MeleeWeapon 1
+*EnableDebugCategory CharacterAttributes 1*  
+*EnableDebugCategory AIAttributes 1*  
+*EnableDebugCategory RangedWeapon 1*  
+*EnableDebugCategory MeleeWeapon 1*  

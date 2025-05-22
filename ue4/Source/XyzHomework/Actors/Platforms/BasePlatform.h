@@ -7,7 +7,6 @@
 #include "Components/TimelineComponent.h"
 #include "BasePlatform.generated.h"
 
-
 UENUM(BlueprintType)
 enum class EPlatformBehavior : uint8
 {
@@ -16,8 +15,6 @@ enum class EPlatformBehavior : uint8
 	Default,
 	Max UMETA(Hidden)
 };
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlatformStatusChangedEvent, bool, bIsActivated);
 
 /**
  *
@@ -28,6 +25,8 @@ class XYZHOMEWORK_API ABasePlatform : public AActor
 	GENERATED_BODY()
 
 public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlatformStatusChangedEvent, bool, bIsActivated);
+
 	UPROPERTY(BlueprintAssignable)
 	FOnPlatformStatusChangedEvent OnPlatformStatusChanged;
 
@@ -39,11 +38,21 @@ public:
 	void ResetPlatform();
 
 protected:
+	virtual void BeginPlay() override;
+	UFUNCTION(BlueprintCallable)
+	void PlatformTimelinePlay() { PlatformTimeline.Play(); }
+	UFUNCTION(BlueprintCallable)
+	void PlatformTimelineReverse() { PlatformTimeline.Reverse(); }
+	UFUNCTION(BlueprintCallable)
+	void PlatformTimelinePlayFromStart() { PlatformTimeline.PlayFromStart(); }
+	UFUNCTION(BlueprintCallable)
+	void PlatformTimelineReverseFromEnd() { PlatformTimeline.ReverseFromEnd(); }
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* PlatformMesh;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	class UBoxComponent* PlatformCollision;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient)
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Transient)
 	FVector StartLocation;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector EndLocation;
@@ -54,20 +63,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	EPlatformBehavior PlatformBehavior = EPlatformBehavior::OnDemand;
 
-	virtual void BeginPlay() override;
-	UFUNCTION(BlueprintCallable)
-	void PlatformTimelinePlay() { PlatformTimeline.Play(); }
-	UFUNCTION(BlueprintCallable)
-	void PlatformTimelineReverse() { PlatformTimeline.Reverse(); }
-
 private:
+	void OnSetIsActivated() const;
+	void PlatformTimelineUpdate(float Alpha);
+
 	UPROPERTY(ReplicatedUsing = OnRep_SetIsActivated)
 	bool bIsActivated = false;
-	FTimeline PlatformTimeline;
-	FTimerHandle PlatformIdleTimer;
-
-	void OnSetIsActivated() const;
 	UFUNCTION()
 	void OnRep_SetIsActivated(bool bIsActivated_Old);
-	void PlatformTimelineUpdate(float Alpha);
+	FTimeline PlatformTimeline;
+	FTimerHandle PlatformIdleTimer;
 };

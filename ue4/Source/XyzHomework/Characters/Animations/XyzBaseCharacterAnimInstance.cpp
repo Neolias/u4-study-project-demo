@@ -1,76 +1,77 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Characters/Animations/XyzBaseCharacterAnimInstance.h"
 
 #include "Actors/Equipment/Weapons/RangedWeaponItem.h"
 #include "Characters/XyzBaseCharacter.h"
 #include "Characters/Controllers/XyzPlayerController.h"
-#include "Components/CharacterComponents/CharacterAttributesComponent.h"
 #include "Components/CharacterComponents/CharacterEquipmentComponent.h"
 #include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
 
 void UXyzBaseCharacterAnimInstance::NativeBeginPlay()
 {
 	Super::NativeBeginPlay();
-	checkf(TryGetPawnOwner()->IsA<AXyzBaseCharacter>(), TEXT("UXyzBaseCharacterAnimInstance::NativeBeginPlay() should be used only with AXyzBaseCharacter"))
+	
+	if (IsValid(TryGetPawnOwner()))
+	{
+		checkf(TryGetPawnOwner()->IsA<AXyzBaseCharacter>(), TEXT("UXyzBaseCharacterAnimInstance::NativeBeginPlay(): UXyzBaseCharacterAnimInstance can only be used with AXyzBaseCharacter."))
 		CachedBaseCharacter = StaticCast<AXyzBaseCharacter*>(TryGetPawnOwner());
+	}
 }
 
-void UXyzBaseCharacterAnimInstance::NativeUpdateAnimation(const float DeltaSeconds)
+void UXyzBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
-	if (!CachedBaseCharacter.IsValid())
+	
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (!IsValid(BaseCharacter))
 	{
 		return;
 	}
 
-	const UXyzBaseCharMovementComponent* BaseCharMovementComponent = CachedBaseCharacter->GetBaseCharacterMovementComponent();
+	const UXyzBaseCharMovementComponent* BaseCharMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
 	bIsFalling = BaseCharMovementComponent->IsFalling();
-	bIsCrouching = BaseCharMovementComponent->IsCrouching();
-	bIsSprinting = BaseCharMovementComponent->IsSprinting();
-	bIsProne = BaseCharMovementComponent->IsProne();
+	bIsCrouching = BaseCharacter->IsCrouching();
+	bIsSprinting = BaseCharacter->IsSprinting();
+	bIsProne = BaseCharacter->IsProne();
 	bIsSwimming = BaseCharMovementComponent->IsSwimming();
 	bIsOnLadder = BaseCharMovementComponent->IsOnLadder();
 	bIsOnZipline = BaseCharMovementComponent->IsOnZipline();
 	bIsWallRunning = BaseCharMovementComponent->IsWallRunning();
-	bIsSliding = BaseCharMovementComponent->IsSliding();
-	bIsOnTopOfCurrentLadder = BaseCharMovementComponent->IsOnTopOfCurrentLadder();
-	bIsAiming = CachedBaseCharacter->IsAiming();
-	bIsOutOfStamina = CachedBaseCharacter->GetCharacterAttributesComponent()->IsOutOfStamina();
+	bIsOutOfStamina = BaseCharacter->IsOutOfStamina();
+	bIsAiming = BaseCharacter->IsAiming();
+	bIsReloading = BaseCharacter->IsReloadingWeapon();
 
-	const UCharacterEquipmentComponent* CharacterEquipmentComponent = CachedBaseCharacter->GetCharacterEquipmentComponent();
+	const UCharacterEquipmentComponent* CharacterEquipmentComponent = BaseCharacter->GetCharacterEquipmentComponent();
 	bIsPrimaryItemEquipped = CharacterEquipmentComponent->IsPrimaryItemEquipped();
-	CurrentRangedWeaponType = CharacterEquipmentComponent->GetCurrentRangedWeaponType();
+	CurrentEquipmentItemType = CharacterEquipmentComponent->GetCurrentEquipmentItemType();
 	Velocity = BaseCharMovementComponent->Velocity;
-	MovementDirection = CalculateDirection(BaseCharMovementComponent->Velocity, CachedBaseCharacter->GetActorRotation());
+	MovementDirection = CalculateDirection(BaseCharMovementComponent->Velocity, BaseCharacter->GetActorRotation());
 	MovementSpeed = BaseCharMovementComponent->Velocity.Size();
 	CurrentWallRunSide = BaseCharMovementComponent->GetCurrentWallRunSide();
-	CharacterPitch = CachedBaseCharacter->GetActorRotation().Pitch;
+	CharacterPitch = BaseCharacter->GetActorRotation().Pitch;
 	CameraPitch = CalculateCameraPitch();
-	AimRotation = CachedBaseCharacter->GetAimOffset();
+	AimRotation = BaseCharacter->GetAimOffset();
 	if (bIsOnLadder)
 	{
 		LadderSpeedRatio = BaseCharMovementComponent->GetLadderSpeedRatio();
 	}
 
-	const float PelvisOffset = +CachedBaseCharacter->GetIKPelvisOffset();
-
-	LeftFootEffectorLocation = FVector(CachedBaseCharacter->GetIKLeftFootOffset() + PelvisOffset, 0.f, 0.f);
-	RightFootEffectorLocation = FVector(CachedBaseCharacter->GetIKRightFootOffset() + PelvisOffset, 0.f, 0.f);
+	float PelvisOffset = BaseCharacter->GetIKPelvisOffset();
+	LeftFootEffectorLocation = FVector(BaseCharacter->GetIKLeftFootOffset() - PelvisOffset, 0.f, 0.f);
+	RightFootEffectorLocation = FVector(BaseCharacter->GetIKRightFootOffset() - PelvisOffset, 0.f, 0.f);
 	PelvisEffectorLocation = FVector(0.f, 0.f, PelvisOffset);
 	const ARangedWeaponItem* CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
 	if (IsValid(CurrentRangedWeapon))
 	{
-		bIsReloading = CurrentRangedWeapon->IsReloading();
 		FTransform ForeGripTransform = CurrentRangedWeapon->GetForeGripSocketTransform();
-		const FVector ForeGripLocation = ForeGripTransform.GetLocation() - PelvisOffset * FVector::UpVector;
+		FVector ForeGripLocation = ForeGripTransform.GetLocation() - PelvisOffset * FVector::UpVector;
 		ForeGripTransform.SetLocation(ForeGripLocation);
 		CurrentRangedWeaponForeGripTransform = ForeGripTransform;
 	}
 }
 
-float UXyzBaseCharacterAnimInstance::CalculateCameraPitch()
+float UXyzBaseCharacterAnimInstance::CalculateCameraPitch() const
 {
 	const AXyzPlayerController* Controller = CachedBaseCharacter->GetController<AXyzPlayerController>();
 	if (IsValid(Controller) && !Controller->IgnoresFPCameraPitch())

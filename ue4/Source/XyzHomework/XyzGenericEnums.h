@@ -56,9 +56,9 @@ enum class EEquipmentItemType : uint8
 	Pistol,
 	Rifle,
 	Shotgun,
-	SniperRifle,
-	Grenade,
+	SniperRifle UMETA(DisplayName = "SniperRifle"),
 	Knife,
+	Grenade,
 	Max UMETA(Hidden)
 };
 
@@ -69,9 +69,9 @@ enum class EEquipmentItemSlot : uint8
 	SideArm,
 	PrimaryWeapon,
 	SecondaryWeapon,
-	PrimaryItem,
-	SecondaryItem,
 	MeleeWeapon,
+	PrimaryItem,
+	//SecondaryItem,
 	Max UMETA(Hidden)
 };
 
@@ -90,9 +90,9 @@ enum class EWeaponAmmoType : uint8
 	Pistol,
 	Rifle,
 	Shotgun,
-	SniperRifle,
+	SniperRifle UMETA(DisplayName = "SniperRifle"),
 	Grenade,
-	RifleGrenade,
+	RifleGrenade UMETA(DisplayName = "RifleGrenade"),
 	Max UMETA(Hidden)
 };
 
@@ -153,5 +153,64 @@ enum class EPatrolMode : uint8
 	None = 0,
 	Circle,
 	PingPong,
+	Max UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
+enum class EInventoryItemType : uint8
+{
+	None = 0,
+	HealthPack UMETA(DisplayName = "HealthPack"),
+	Adrenaline,
+	Pistol,
+	Rifle,
+	Shotgun,
+	SniperRifle UMETA(DisplayName = "SniperRifle"),
+	Knife,
+	Grenade,
+	PistolAmmo UMETA(DisplayName = "PistolAmmo"),
+	RifleAmmo UMETA(DisplayName = "RifleAmmo"),
+	ShotgunAmmo UMETA(DisplayName = "ShotgunAmmo"),
+	SniperRifleAmmo UMETA(DisplayName = "SniperRifleAmmo"),
+	Max UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
+enum class EGameplayAbility : uint8
+{
+	None = 0,
+	Sprint,
+	Crouch,
+	Prone,
+	Slide,
+	Jump,
+	Mantle,
+	UseEnvironmentActor UMETA(DisplayName = "UseEnvironmentActor"),
+	Dive,
+	Death,
+	OutOfStamina UMETA(DisplayName = "OutOfStamina"),
+	DrawNextItem UMETA(DisplayName = "DrawNextItem"),
+	DrawPreviousItem UMETA(DisplayName = "DrawPreviousItem"),
+	DrawPrimaryItem UMETA(DisplayName = "DrawPrimaryItem"),
+	EquipFromCurrentSlot UMETA(DisplayName = "EquipFromCurrentSlot"),
+	EquipFromCurrentSlotFast UMETA(DisplayName = "EquipFromCurrentSlotFast"),
+	AimWeapon UMETA(DisplayName = "AimWeapon"),
+	FireWeapon UMETA(DisplayName = "FireWeapon"),
+	ReloadWeapon UMETA(DisplayName = "ReloadWeapon"),
+	PrimaryMeleeAttack UMETA(DisplayName = "PrimaryMeleeAttack"),
+	SecondaryMeleeAttack UMETA(DisplayName = "SecondaryMeleeAttack"),
+	ThrowItem UMETA(DisplayName = "ThrowItem"),
+	Max UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
+enum class EGameplayEffect : uint8
+{
+	None = 0,
+	RestoreStamina UMETA(DisplayName = "RestoreStamina"),
+	OutOfStamina UMETA(DisplayName = "OutOfStamina"),
+	RestoreOxygen UMETA(DisplayName = "RestoreOxygen"),
+	OutOfOxygen UMETA(DisplayName = "OutOfOxygen"),
+	Diving,
 	Max UMETA(Hidden)
 };

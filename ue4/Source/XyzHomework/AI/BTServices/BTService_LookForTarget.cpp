@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "AI/BTServices/BTService_LookForTarget.h"
 
 #include "AIController.h"
@@ -13,7 +12,7 @@ UBTService_LookForTarget::UBTService_LookForTarget()
 	NodeName = "LookForTarget";
 }
 
-void UBTService_LookForTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, const float DeltaSeconds)
+void UBTService_LookForTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
 {
 	Super::TickNode(OwnerComp, NodeMemory, DeltaSeconds);
 
@@ -23,42 +22,42 @@ void UBTService_LookForTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8
 		return;
 	}
 
-	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
-	if (!IsValid(Blackboard))
+	if (UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent())
 	{
-		return;
-	}
+		AActor* CurrentTarget = Cast<AActor>(Blackboard->GetValueAsObject(AICharacterBTCurrentTargetName));
+		if (IsValid(CurrentTarget))
+		{
+			bool bCanSeeTarget = CanSeeTarget(AIController, CurrentTarget);
+			Blackboard->SetValueAsBool(AICharacterBTCanSeeTargetName, bCanSeeTarget);
 
-	const AActor* CurrentTarget = Cast<AActor>(Blackboard->GetValueAsObject(AICharacterBTCurrentTargetName));
-	if (IsValid(CurrentTarget))
-	{
-		Blackboard->SetValueAsBool(AICharacterBTCanSeeTargetName, CanSeeTarget(AIController));
-
-		const float Distance = FVector::Dist(CurrentTarget->GetActorLocation(), AIController->GetPawn()->GetActorLocation());
-		Blackboard->SetValueAsFloat(AICharacterBTDistanceToTargetName, Distance);
-	}
-	else
-	{
-		Blackboard->SetValueAsBool(AICharacterBTCanSeeTargetName, false);
+			float Distance = FVector::Dist(CurrentTarget->GetActorLocation(), AIController->GetPawn()->GetActorLocation());
+			Blackboard->SetValueAsFloat(AICharacterBTDistanceToTargetName, Distance);
+		}
+		else
+		{
+			Blackboard->SetValueAsBool(AICharacterBTCanSeeTargetName, false);
+		}
 	}
 }
 
-bool UBTService_LookForTarget::CanSeeTarget(AAIController* AIController) const
+bool UBTService_LookForTarget::CanSeeTarget(AAIController* AIController, AActor* CurrentTarget) const
 {
 	FVector ViewPointLocation;
 	FRotator ViewPointRotation;
 	AIController->GetActorEyesViewPoint(ViewPointLocation, ViewPointRotation);
-
 	FHitResult HitResult;
 	FCollisionQueryParams CollisionQueryParams;
-	CollisionQueryParams.AddIgnoredActor(AIController->GetPawn());
+	AActor* AIPawn = AIController->GetPawn();
+	CollisionQueryParams.AddIgnoredActor(AIPawn);
 
-	FVector EndLocation = ViewPointLocation + ViewPointRotation.Vector() * TraceRange;
-
-	if (GetWorld()->LineTraceSingleByChannel(HitResult, ViewPointLocation, EndLocation, ECC_Pawn, CollisionQueryParams))
+	if (GetWorld()->LineTraceSingleByChannel(HitResult, ViewPointLocation, CurrentTarget->GetActorLocation(), ECC_Pawn, CollisionQueryParams))
 	{
-		AActor* SeenActor = HitResult.GetActor();
-		return IsValid(SeenActor) && SeenActor->IsA<APlayerCharacter>();
+		if (IsValid(HitResult.GetActor()) && HitResult.GetActor() == CurrentTarget)
+		{
+			FVector DirectionToTarget = CurrentTarget->GetActorLocation() - AIPawn->GetActorLocation();
+			bool bIsLocatedAhead = FVector::DotProduct(AIPawn->GetActorForwardVector(), DirectionToTarget) > 0.0f;
+			return bIsLocatedAhead;
+		}
 	}
 
 	return false;

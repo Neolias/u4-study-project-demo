@@ -8,12 +8,29 @@ public class XyzHomework : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Niagara", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] {
+			"Core",
+			"CoreUObject", 
+			"Engine", 
+			"InputCore", 
+			"Niagara", 
+			"UMG",
+            "OnlineSubsystem",
+            "OnlineSubsystemUtils",
+            "SignificanceManager",
+            "GameplayTasks",
+            "GameplayAbilities",
+            "GameplayTags"
+        });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+        DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
+
+        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 
 		PrivateIncludePaths.AddRange(new string[] { Name });
 
+		// OptimizeCode = CodeOptimization.Never;
+		
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 		

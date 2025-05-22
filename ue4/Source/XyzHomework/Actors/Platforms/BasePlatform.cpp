@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "BasePlatform.h"
 
 #include "Components/BoxComponent.h"
@@ -19,25 +18,13 @@ ABasePlatform::ABasePlatform()
 	PlatformCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("TriggerCollision"));
 	PlatformCollision->SetupAttachment(PlatformRoot);
 
-	SetReplicates(true);
+	bReplicates = true;
+	SetReplicateMovement(true);
 	NetUpdateFrequency = 2.f;
 	MinNetUpdateFrequency = 2.f;
 }
 
-void ABasePlatform::BeginPlay()
-{
-	Super::BeginPlay();
-	StartLocation = RootComponent->GetRelativeLocation();
-
-	if (IsValid(TimelineCurve))
-	{
-		FOnTimelineFloatStatic PlatformMovementTimelineUpdate;
-		PlatformMovementTimelineUpdate.BindUObject(this, &ABasePlatform::PlatformTimelineUpdate);
-		PlatformTimeline.AddInterpFloat(TimelineCurve, PlatformMovementTimelineUpdate);
-	}
-}
-
-void ABasePlatform::Tick(const float DeltaSeconds)
+void ABasePlatform::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	PlatformTimeline.TickTimeline(DeltaSeconds);
@@ -47,24 +34,12 @@ void ABasePlatform::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ABasePlatform, bIsActivated);
+	DOREPLIFETIME(ABasePlatform, StartLocation);
 }
 
-void ABasePlatform::SetIsActivated(const bool bIsActivated_In)
+void ABasePlatform::SetIsActivated(bool bIsActivated_In)
 {
 	bIsActivated = bIsActivated_In;
-	OnSetIsActivated();
-}
-
-void ABasePlatform::OnSetIsActivated() const
-{
-	if (OnPlatformStatusChanged.IsBound())
-	{
-		OnPlatformStatusChanged.Broadcast(bIsActivated);
-	}
-}
-
-void ABasePlatform::OnRep_SetIsActivated(bool bIsActivated_Old)
-{
 	OnSetIsActivated();
 }
 
@@ -81,8 +56,38 @@ void ABasePlatform::ResetPlatform()
 	PlatformTimelineReverse();
 }
 
-void ABasePlatform::PlatformTimelineUpdate(const float Alpha)
+void ABasePlatform::BeginPlay()
 {
-	const FVector PlatformTargetLocation = FMath::Lerp(StartLocation, StartLocation + EndLocation, Alpha);
-	RootComponent->SetRelativeLocation(PlatformTargetLocation);
+	Super::BeginPlay();
+
+	if (GetLocalRole() == ROLE_Authority)
+	{
+		StartLocation = RootComponent->GetComponentLocation();
+	}
+
+	if (TimelineCurve)
+	{
+		FOnTimelineFloatStatic PlatformMovementTimelineUpdate;
+		PlatformMovementTimelineUpdate.BindUObject(this, &ABasePlatform::PlatformTimelineUpdate);
+		PlatformTimeline.AddInterpFloat(TimelineCurve, PlatformMovementTimelineUpdate);
+	}
+}
+
+void ABasePlatform::OnSetIsActivated() const
+{
+	if (OnPlatformStatusChanged.IsBound())
+	{
+		OnPlatformStatusChanged.Broadcast(bIsActivated);
+	}
+}
+
+void ABasePlatform::PlatformTimelineUpdate(float Alpha)
+{
+	FVector PlatformTargetLocation = FMath::Lerp(StartLocation, StartLocation + EndLocation, Alpha);
+	RootComponent->SetWorldLocation(PlatformTargetLocation);
+}
+
+void ABasePlatform::OnRep_SetIsActivated(bool bIsActivated_Old)
+{
+	OnSetIsActivated();
 }

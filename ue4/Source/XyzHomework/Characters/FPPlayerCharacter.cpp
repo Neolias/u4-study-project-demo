@@ -1,22 +1,19 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Characters/FPPlayerCharacter.h"
 
-#include "GameFramework/CharacterMovementComponent.h"
-#include "Components/CapsuleComponent.h"
+#include "Actors/Environment/Ladder.h"
+#include "Actors/Environment/Zipline.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
+#include "Controllers/XyzPlayerController.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
-#include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
-#include "Components/CharacterComponents/CharacterAttributesComponent.h"
-#include "Actors/Interactive/Environment/Ladder.h"
-#include "Actors/Interactive/Environment/Zipline.h"
-#include "Controllers/XyzPlayerController.h"
-
 AFPPlayerCharacter::AFPPlayerCharacter(const FObjectInitializer& ObjectInitializer)
-	:Super(ObjectInitializer)
+	: Super(ObjectInitializer)
 {
 	FPMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FPSkeletalMesh"));
 	FPMeshComponent->SetupAttachment(GetCapsuleComponent());
@@ -29,11 +26,9 @@ AFPPlayerCharacter::AFPPlayerCharacter(const FObjectInitializer& ObjectInitializ
 	FPCameraComponent->SetupAttachment(FPMeshComponent, CameraSocket);
 	FPCameraComponent->bUsePawnControlRotation = true;
 
-	if (IsValid(SkeletalMeshComponent))
-	{
-		SkeletalMeshComponent->SetOwnerNoSee(true);
-		SkeletalMeshComponent->bCastHiddenShadow = true;
-	}
+	GetMesh()->SetOwnerNoSee(true);
+	GetMesh()->bCastHiddenShadow = true;
+
 	CameraComponent->bAutoActivate = false;
 	SpringArmComponent->bAutoActivate = false;
 	SpringArmComponent->bUsePawnControlRotation = false;
@@ -47,7 +42,7 @@ void AFPPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (IsValid(WallRunCameraTiltCurve))
+	if (WallRunCameraTiltCurve)
 	{
 		FOnTimelineFloatStatic TimelineCallBack;
 		TimelineCallBack.BindUObject(this, &AFPPlayerCharacter::UpdateWallRunCameraTilt);
@@ -55,7 +50,7 @@ void AFPPlayerCharacter::BeginPlay()
 	}
 }
 
-void AFPPlayerCharacter::Tick(const float DeltaSeconds)
+void AFPPlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
@@ -63,8 +58,6 @@ void AFPPlayerCharacter::Tick(const float DeltaSeconds)
 
 	WallRunCameraTiltTimeline.TickTimeline(DeltaSeconds);
 }
-
-// General
 
 FRotator AFPPlayerCharacter::GetViewRotation() const
 {
@@ -74,7 +67,7 @@ FRotator AFPPlayerCharacter::GetViewRotation() const
 	if (IsAligningFPCameraToSocketRotation())
 	{
 		FRotator SocketRotation = FPMeshComponent->GetSocketRotation(CameraSocket);
-		if (CharacterAttributesComponent->IsOutOfStamina())
+		if (IsOutOfStamina())
 		{
 			SocketRotation.Yaw = Result.Yaw;
 		}
@@ -86,11 +79,126 @@ FRotator AFPPlayerCharacter::GetViewRotation() const
 
 bool AFPPlayerCharacter::IsFPMontagePlaying() const
 {
-	const UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance();
-	return IsValid(FPAnimInstance) && FPAnimInstance->IsAnyMontagePlaying();
+	return FPMeshComponent->GetAnimInstance() && FPMeshComponent->GetAnimInstance()->IsAnyMontagePlaying();
 }
 
-void AFPPlayerCharacter::OnMovementModeChanged(const EMovementMode PrevMovementMode, const uint8 PreviousCustomMode)
+#pragma region CAMERA
+
+bool AFPPlayerCharacter::IsAligningFPCameraToSocketRotation() const
+{
+	return IsFPMontagePlaying() && (BaseCharacterMovementComponent->IsMantling() || BaseCharacterMovementComponent->IsOnTopOfCurrentLadder()) || IsOutOfStamina() || bIsHardLanding;
+}
+
+void AFPPlayerCharacter::StartFPCameraAlignment()
+{
+	if (IsValid(GetController()))
+	{
+		GetController()->SetIgnoreLookInput(true);
+		GetController()->SetIgnoreMoveInput(true);
+	}
+	bIsForcedToAlignFPCamera = true;
+}
+
+void AFPPlayerCharacter::EndFPCameraAlignment()
+{
+	bIsForcedToAlignFPCamera = false;
+	if (IsValid(GetController()))
+	{
+		GetController()->ResetIgnoreLookInput();
+		GetController()->ResetIgnoreMoveInput();
+	}
+}
+
+void AFPPlayerCharacter::UpdateCameraAlignment(float DeltaSeconds)
+{
+	if (!IsValid(GetController()))
+	{
+		return;
+	}
+
+	if (IsAligningFPCameraToSocketRotation())
+	{
+		FRotator TargetControlRotation = GetController()->GetControlRotation();
+		FRotator SocketRotation = FPMeshComponent->GetSocketRotation(CameraSocket);
+		if (IsOutOfStamina())
+		{
+			SocketRotation.Yaw = TargetControlRotation.Yaw;
+		}
+		TargetControlRotation = FMath::RInterpTo(TargetControlRotation, SocketRotation, DeltaSeconds, AnimMontageCameraBlendSpeed);
+		GetController()->SetControlRotation(TargetControlRotation);
+	}
+
+	if (BaseCharacterMovementComponent->IsWallRunning())
+	{
+		if (BaseCharacterMovementComponent->IsWallRunning())
+		{
+			FRotator CurrentWallRunDirection = BaseCharacterMovementComponent->GetCurrentWallRunDirection().ToOrientationRotator();
+			FRotator TargetControlRotation = GetController()->GetControlRotation();
+			TargetControlRotation.Pitch = CurrentWallRunDirection.Pitch;
+			TargetControlRotation.Yaw = CurrentWallRunDirection.Yaw;
+			TargetControlRotation = FMath::RInterpTo(GetController()->GetControlRotation(), TargetControlRotation, DeltaSeconds, AlignmentBlendSpeed);
+			GetController()->SetControlRotation(TargetControlRotation);
+		}
+	}
+
+	if (bIsForcedToAlignFPCamera)
+	{
+		FRotator TargetControlRotation = GetController()->GetControlRotation();
+		if (!TargetControlRotation.Equals(ForcedTargetControlRotation, 0.1f))
+		{
+			TargetControlRotation = FMath::RInterpTo(TargetControlRotation, ForcedTargetControlRotation, DeltaSeconds, AlignmentBlendSpeed);
+			GetController()->SetControlRotation(TargetControlRotation);
+		}
+		else
+		{
+			EndFPCameraAlignment();
+
+			if (bWantsToEndMantle)
+			{
+				OnStopMantle();
+			}
+			else if (bWantsToAttachToLadder)
+			{
+				OnAttachedToLadder();
+			}
+			else if (bWantsToEndOutOfStamina)
+			{
+				bUseControllerRotationYaw = true;
+				bWantsToEndOutOfStamina = false;
+			}
+			else if (bWantsToEndHardLand)
+			{
+				bUseControllerRotationYaw = true;
+				bWantsToEndHardLand = false;
+			}
+		}
+	}
+}
+
+void AFPPlayerCharacter::UpdateWallRunCameraTilt(float Value) const
+{
+	if (IsValid(GetController()))
+	{
+		FRotator TargetControlRotation = GetController()->GetControlRotation();
+		TargetControlRotation.Roll = BaseCharacterMovementComponent->GetCurrentWallRunSide() == EWallRunSide::Left ? Value : -Value;
+		GetController()->SetControlRotation(TargetControlRotation);
+	}
+}
+
+void AFPPlayerCharacter::StartWallRunCameraTilt()
+{
+	WallRunCameraTiltTimeline.Play();
+}
+
+void AFPPlayerCharacter::EndWallRunCameraTilt()
+{
+	WallRunCameraTiltTimeline.Reverse();
+}
+#pragma endregion
+
+#pragma region MOVEMENT
+
+void AFPPlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
 {
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 
@@ -112,26 +220,29 @@ void AFPPlayerCharacter::OnMovementModeChanged(const EMovementMode PrevMovementM
 	}
 	else if (BaseCharacterMovementComponent->IsSwimming())
 	{
-		if (XyzPlayerController.IsValid())
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
+			PlayerController->ShouldIgnoreFPCameraPitch(true);
 		}
 	}
 	else if (BaseCharacterMovementComponent->IsWallRunning())
 	{
-		if (XyzPlayerController.IsValid())
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-			XyzPlayerController->SetIgnoreLookInput(true);
-			XyzPlayerController->SetIgnoreMoveInput(true);
+			PlayerController->ShouldIgnoreFPCameraPitch(true);
+			PlayerController->SetIgnoreLookInput(true);
+			PlayerController->SetIgnoreMoveInput(true);
 		}
 		StartWallRunCameraTilt();
 	}
 	else if (PrevMovementMode == MOVE_Swimming)
 	{
-		if (XyzPlayerController.IsValid())
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
+			PlayerController->ShouldIgnoreFPCameraPitch(false);
 		}
 	}
 	else if (PreviousCustomMode == (uint8)ECustomMovementMode::CMOVE_Ladder)
@@ -148,114 +259,139 @@ void AFPPlayerCharacter::OnMovementModeChanged(const EMovementMode PrevMovementM
 	}
 	else if (PreviousCustomMode == (uint8)ECustomMovementMode::CMOVE_WallRun)
 	{
-		if (XyzPlayerController.IsValid())
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-			XyzPlayerController->SetIgnoreLookInput(false);
-			XyzPlayerController->SetIgnoreMoveInput(false);
+			PlayerController->ShouldIgnoreFPCameraPitch(false);
+			PlayerController->ResetIgnoreLookInput();
+			PlayerController->ResetIgnoreMoveInput();
 		}
 		EndWallRunCameraTilt();
 	}
 }
 
-// Camera
-
-bool AFPPlayerCharacter::IsAligningFPCameraToSocketRotation() const
+void AFPPlayerCharacter::OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	return IsFPMontagePlaying() && (BaseCharacterMovementComponent->IsMantling() || BaseCharacterMovementComponent->IsOnTopOfCurrentLadder()) || CharacterAttributesComponent->IsOutOfStamina() || bIsHardLanding;
-}
+	Super::OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
-void AFPPlayerCharacter::StartFPCameraAlignment()
-{
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->SetIgnoreLookInput(true);
-		XyzPlayerController->SetIgnoreMoveInput(true);
-	}
-	bIsForcedToAlignFPCamera = true;
-}
-
-void AFPPlayerCharacter::EndFPCameraAlignment()
-{
-	bIsForcedToAlignFPCamera = false;
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->SetIgnoreLookInput(false);
-		XyzPlayerController->SetIgnoreMoveInput(false);
-	}
-}
-
-void AFPPlayerCharacter::UpdateCameraAlignment(const float DeltaSeconds)
-{
-	if (!XyzPlayerController.IsValid())
+	if (!SlideFPAnimMontage)
 	{
 		return;
 	}
 
-	if (IsAligningFPCameraToSocketRotation())
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z += HalfHeightAdjust;
+	bUseControllerRotationYaw = false;
+	if (UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance())
 	{
-		FRotator TargetControlRotation = XyzPlayerController->GetControlRotation();
-		FRotator SocketRotation = FPMeshComponent->GetSocketRotation(CameraSocket);
-		if (CharacterAttributesComponent->IsOutOfStamina())
+		bUseControllerRotationYaw = false;
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			SocketRotation.Yaw = TargetControlRotation.Yaw;
+			PlayerController->ShouldIgnoreFPCameraPitch(true);
+			PlayerController->SetIgnoreLookInput(true);
+			PlayerController->SetIgnoreMoveInput(true);
 		}
-		TargetControlRotation = FMath::RInterpTo(TargetControlRotation, SocketRotation, DeltaSeconds, AnimMontageCameraBlendSpeed);
-		XyzPlayerController->SetControlRotation(TargetControlRotation);
-	}
-
-	if (BaseCharacterMovementComponent->IsWallRunning())
-	{
-		if (BaseCharacterMovementComponent->IsWallRunning() && XyzPlayerController.IsValid())
-		{
-			const FRotator CurrentWallRunDirection = BaseCharacterMovementComponent->GetCurrentWallRunDirection().ToOrientationRotator();
-			FRotator TargetControlRotation = XyzPlayerController->GetControlRotation();
-			TargetControlRotation.Pitch = CurrentWallRunDirection.Pitch;
-			TargetControlRotation.Yaw = CurrentWallRunDirection.Yaw;
-			TargetControlRotation = FMath::RInterpTo(XyzPlayerController->GetControlRotation(), TargetControlRotation, DeltaSeconds, AlignmentBlendSpeed);
-			XyzPlayerController->SetControlRotation(TargetControlRotation);
-		}
-	}
-
-	if (bIsForcedToAlignFPCamera)
-	{
-		FRotator TargetControlRotation = XyzPlayerController->GetControlRotation();
-		if (!TargetControlRotation.Equals(ForcedTargetControlRotation, 0.1f))
-		{
-			TargetControlRotation = FMath::RInterpTo(TargetControlRotation, ForcedTargetControlRotation, DeltaSeconds, AlignmentBlendSpeed);
-			XyzPlayerController->SetControlRotation(TargetControlRotation);
-		}
-		else
-		{
-			EndFPCameraAlignment();
-
-			if (bWantsToEndMantle)
-			{
-				OnEndMantle();
-			}
-			else if (bWantsToAttachToLadder)
-			{
-				OnAttachedToLadder();
-			}
-			else if (bWantsToEndOutOfStamina)
-			{
-				bUseControllerRotationYaw = true;
-				bWantsToEndOutOfStamina = false;
-			}
-			else if (bWantsToEndHardLand)
-			{
-				bUseControllerRotationYaw = true;
-				bWantsToEndHardLand = false;
-			}
-		}
+		ForcedTargetControlRotation = GetActorForwardVector().ToOrientationRotator();
+		float Duration = FPAnimInstance->Montage_Play(SlideFPAnimMontage, 1.f, EMontagePlayReturnType::Duration);
+		// Uncomment to align camera after sliding
+		//GetWorldTimerManager().SetTimer(FPSlideTimer, this, &AFPPlayerCharacter::StartFPCameraAlignment, Duration, false);
 	}
 }
 
-// Landing
-
-void AFPPlayerCharacter::OnHardLandStart()
+void AFPPlayerCharacter::OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	Super::OnHardLandStart();
+	Super::OnStopSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	bUseControllerRotationYaw = true;
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+		PlayerController->ResetIgnoreLookInput();
+		PlayerController->ResetIgnoreMoveInput();
+	}
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z -= HalfHeightAdjust;
+}
+
+void AFPPlayerCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+	}
+	const AFPPlayerCharacter* DefaultCharacter = GetDefault<AFPPlayerCharacter>(GetClass());
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z = DefaultCharacter->FPMeshComponent->GetRelativeLocation().Z + HalfHeightAdjust;
+}
+
+void AFPPlayerCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+	}
+	const AFPPlayerCharacter* DefaultCharacter = GetDefault<AFPPlayerCharacter>(GetClass());
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z = DefaultCharacter->FPMeshComponent->GetRelativeLocation().Z;
+}
+
+void AFPPlayerCharacter::OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+	}
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z += HalfHeightAdjust;
+}
+
+void AFPPlayerCharacter::OnStopProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStopProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+	}
+	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
+	RelativeMeshLocation.Z -= HalfHeightAdjust;
+}
+
+void AFPPlayerCharacter::OnMantle(const FMantlingSettings& MantlingSettings, const FMantlingMovementParameters& MantlingParameters)
+{
+	Super::OnMantle(MantlingSettings, MantlingParameters);
+
+	if (FPMeshComponent->GetAnimInstance() && MantlingSettings.FPMantlingMontage)
+	{
+		bUseControllerRotationYaw = false;
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
+		{
+			PlayerController->ShouldIgnoreFPCameraPitch(true);
+			PlayerController->SetIgnoreLookInput(true);
+			PlayerController->SetIgnoreMoveInput(true);
+		}
+		ForcedTargetControlRotation = MantlingParameters.TargetRotation;
+		float MantlingDuration = FPMeshComponent->GetAnimInstance()->Montage_Play(MantlingSettings.FPMantlingMontage, 1.f, EMontagePlayReturnType::Duration, MantlingParameters.StartTime);
+		GetWorldTimerManager().SetTimer(FPMantlingTimerHandle, this, &AFPPlayerCharacter::StartFPCameraAlignment, MantlingDuration, false);
+	}
+}
+
+void AFPPlayerCharacter::StartHardLand()
+{
+	Super::StartHardLand();
 
 	if (!IsValid(HardLandFPAnimMontage))
 	{
@@ -263,189 +399,67 @@ void AFPPlayerCharacter::OnHardLandStart()
 	}
 
 	bUseControllerRotationYaw = false;
-	UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance();
-	if (IsValid(FPAnimInstance))
+	if (UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance())
 	{
-		if (XyzPlayerController.IsValid())
+		AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+		if (IsValid(PlayerController))
 		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
+			PlayerController->ShouldIgnoreFPCameraPitch(true);
 		}
 		FPAnimInstance->Montage_Play(HardLandFPAnimMontage);
 	}
 }
 
-void AFPPlayerCharacter::OnHardLandEnd()
+void AFPPlayerCharacter::StopHardLand()
 {
-	Super::OnHardLandEnd();
-	if (XyzPlayerController.IsValid())
+	Super::StopHardLand();
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
 	}
 	ForcedTargetControlRotation = GetActorForwardVector().ToOrientationRotator();
 	bWantsToEndHardLand = true;
 	StartFPCameraAlignment();
 }
 
-// Sliding
-
-void AFPPlayerCharacter::OnStartSlide(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AFPPlayerCharacter::OnStopMantle()
 {
-	Super::OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
-
-	if (!IsValid(SlideFPAnimMontage))
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		return;
-	}
-
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z += HalfHeightAdjust;
-	bUseControllerRotationYaw = false;
-	UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance();
-	if (IsValid(FPAnimInstance))
-	{
-		bUseControllerRotationYaw = false;
-		if (XyzPlayerController.IsValid())
-		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-			XyzPlayerController->SetIgnoreLookInput(true);
-			XyzPlayerController->SetIgnoreMoveInput(true);
-		}
-		ForcedTargetControlRotation = GetActorForwardVector().ToOrientationRotator();
-		const float Duration = FPAnimInstance->Montage_Play(SlideFPAnimMontage, 1.f, EMontagePlayReturnType::Duration);
-		// Uncomment to align camera after sliding
-		//GetWorldTimerManager().SetTimer(FPSlideTimer, this, &AFPPlayerCharacter::StartFPCameraAlignment, Duration, false);
-	}
-}
-
-void AFPPlayerCharacter::OnStopSlide(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	Super::OnStopSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	bUseControllerRotationYaw = true;
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-		XyzPlayerController->SetIgnoreLookInput(false);
-		XyzPlayerController->SetIgnoreMoveInput(false);
-	}
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z -= HalfHeightAdjust;
-}
-
-// OutOfStamina
-
-void AFPPlayerCharacter::OnOutOfStaminaStart()
-{
-	Super::OnOutOfStaminaStart();
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-	}
-}
-
-void AFPPlayerCharacter::OnOutOfStaminaEnd()
-{
-	Super::OnOutOfStaminaEnd();
-	bUseControllerRotationYaw = false;
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-	}
-	ForcedTargetControlRotation = GetActorForwardVector().ToOrientationRotator();
-	bWantsToEndOutOfStamina = true;
-	StartFPCameraAlignment();
-}
-
-// Crouching / Proning
-
-void AFPPlayerCharacter::OnStartCrouch(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-	}
-	const AFPPlayerCharacter* DefaultCharacter = GetDefault<AFPPlayerCharacter>(GetClass());
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z = DefaultCharacter->FPMeshComponent->GetRelativeLocation().Z + HalfHeightAdjust;
-}
-
-void AFPPlayerCharacter::OnEndCrouch(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-	}
-	const AFPPlayerCharacter* DefaultCharacter = GetDefault<AFPPlayerCharacter>(GetClass());
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z = DefaultCharacter->FPMeshComponent->GetRelativeLocation().Z;
-}
-
-void AFPPlayerCharacter::OnStartProne(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	Super::OnStartProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-	}
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z += HalfHeightAdjust;
-}
-
-void AFPPlayerCharacter::OnEndProne(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	Super::OnEndProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-	}
-	FVector& RelativeMeshLocation = FPMeshComponent->GetRelativeLocation_DirectMutable();
-	RelativeMeshLocation.Z -= HalfHeightAdjust;
-}
-
-// Mantling
-
-void AFPPlayerCharacter::OnMantle(const FMantlingSettings& MantlingSettings, const FMantlingMovementParameters& MantlingParameters)
-{
-	Super::OnMantle(MantlingSettings, MantlingParameters);
-	UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance();
-	if (IsValid(FPAnimInstance) && IsValid(MantlingSettings.FPMantlingMontage))
-	{
-		bUseControllerRotationYaw = false;
-		if (XyzPlayerController.IsValid())
-		{
-			XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-			XyzPlayerController->SetIgnoreLookInput(true);
-			XyzPlayerController->SetIgnoreMoveInput(true);
-		}
-		ForcedTargetControlRotation = MantlingParameters.TargetRotation;
-		const float MantlingDuration = FPAnimInstance->Montage_Play(MantlingSettings.FPMantlingMontage, 1.f, EMontagePlayReturnType::Duration, MantlingParameters.StartTime);
-		GetWorldTimerManager().SetTimer(FPMantlingTimer, this, &AFPPlayerCharacter::StartFPCameraAlignment, MantlingDuration, false);
-	}
-}
-
-void AFPPlayerCharacter::OnEndMantle()
-{
-	if (XyzPlayerController.IsValid())
-	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-		XyzPlayerController->SetIgnoreLookInput(false);
-		XyzPlayerController->SetIgnoreMoveInput(false);
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+		PlayerController->ResetIgnoreLookInput();
+		PlayerController->ResetIgnoreMoveInput();
 	}
 	bUseControllerRotationYaw = true;
 	bWantsToEndMantle = false;
 }
 
-// Interactive Actors
+#pragma endregion
+
+#pragma region ENVIRONMENT ACTORS
+
+void AFPPlayerCharacter::OnAttachedToLadderFromTop(ALadder* Ladder)
+{
+	Super::OnAttachedToLadderFromTop(Ladder);
+	
+	if (UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance())
+	{
+		float Duration = FPAnimInstance->Montage_Play(Ladder->GetAttachFromTopFPAnimMontage(), 1.f, EMontagePlayReturnType::Duration);
+		GetWorldTimerManager().SetTimer(FPLadderTimerHandle, this, &AFPPlayerCharacter::StartFPCameraAlignment, Duration, false);
+	}
+}
 
 void AFPPlayerCharacter::OnAttachedToLadder()
 {
 	bUseControllerRotationYaw = false;
-	if (XyzPlayerController.IsValid())
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-		const FRotator CurrentControlRotation = XyzPlayerController->GetControlRotation();
-		APlayerCameraManager* CameraManager = XyzPlayerController->PlayerCameraManager;
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+		FRotator CurrentControlRotation = PlayerController->GetControlRotation();
+		APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 		CameraManager->ViewPitchMin = LadderCameraMinPitch;
 		CameraManager->ViewPitchMax = LadderCameraMaxPitch;
 		CameraManager->ViewYawMin = CurrentControlRotation.Yaw + LadderCameraMinYaw;
@@ -457,10 +471,11 @@ void AFPPlayerCharacter::OnAttachedToLadder()
 void AFPPlayerCharacter::OnDetachedFromLadder()
 {
 	bUseControllerRotationYaw = true;
-	if (XyzPlayerController.IsValid())
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-		APlayerCameraManager* CameraManager = XyzPlayerController->PlayerCameraManager;
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+		APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 		const APlayerCameraManager* DefaultCameraManager = CameraManager->GetClass()->GetDefaultObject<APlayerCameraManager>();
 
 		CameraManager->ViewPitchMin = DefaultCameraManager->ViewPitchMin;
@@ -470,26 +485,15 @@ void AFPPlayerCharacter::OnDetachedFromLadder()
 	}
 }
 
-void AFPPlayerCharacter::OnAttachedToLadderFromTop(ALadder* Ladder)
-{
-	Super::OnAttachedToLadderFromTop(Ladder);
-
-	UAnimInstance* FPAnimInstance = FPMeshComponent->GetAnimInstance();
-	if (IsValid(FPAnimInstance))
-	{
-		const float Duration = FPAnimInstance->Montage_Play(Ladder->GetAttachFromTopFPAnimMontage(), 1.f, EMontagePlayReturnType::Duration);
-		GetWorldTimerManager().SetTimer(FPLadderTimer, this, &AFPPlayerCharacter::StartFPCameraAlignment, Duration, false);
-	}
-}
-
 void AFPPlayerCharacter::OnAttachedToZipline()
 {
 	bUseControllerRotationYaw = false;
-	const FRotator ZiplineRotation = BaseCharacterMovementComponent->GetCurrentZipline()->GetZiplineSpanVector().ToOrientationRotator();
-	if (XyzPlayerController.IsValid())
+	FRotator ZiplineRotation = BaseCharacterMovementComponent->GetCurrentZipline()->GetZiplineSpanVector().ToOrientationRotator();
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(true);
-		APlayerCameraManager* CameraManager = XyzPlayerController->PlayerCameraManager;
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+		APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 		CameraManager->ViewPitchMin = ZiplineCameraMinPitch;
 		CameraManager->ViewPitchMax = ZiplineCameraMaxPitch;
 		CameraManager->ViewYawMin = ZiplineRotation.Yaw + ZiplineCameraMinYaw;
@@ -502,10 +506,11 @@ void AFPPlayerCharacter::OnAttachedToZipline()
 void AFPPlayerCharacter::OnDetachedFromZipline()
 {
 	bUseControllerRotationYaw = true;
-	if (XyzPlayerController.IsValid())
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
 	{
-		XyzPlayerController->ShouldIgnoreFPCameraPitch(false);
-		APlayerCameraManager* CameraManager = XyzPlayerController->PlayerCameraManager;
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+		APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 		const APlayerCameraManager* DefaultCameraManager = CameraManager->GetClass()->GetDefaultObject<APlayerCameraManager>();
 
 		CameraManager->ViewPitchMin = DefaultCameraManager->ViewPitchMin;
@@ -514,30 +519,42 @@ void AFPPlayerCharacter::OnDetachedFromZipline()
 		CameraManager->ViewYawMax = DefaultCameraManager->ViewYawMax;
 	}
 }
+#pragma endregion
 
-// Wall Running
+#pragma region ATTRIBUTES
 
-void AFPPlayerCharacter::UpdateWallRunCameraTilt(const float Value) const
+void AFPPlayerCharacter::OnDeath(bool bShouldPlayAnimMontage)
 {
-	if (XyzPlayerController.IsValid())
-	{
-		FRotator TargetControlRotation = XyzPlayerController->GetControlRotation();
-		TargetControlRotation.Roll = BaseCharacterMovementComponent->GetCurrentWallRunSide() == EWallRunSide::Left ? Value : -Value;
-		XyzPlayerController->SetControlRotation(TargetControlRotation);
-	}
-}
-
-// Death
-
-void AFPPlayerCharacter::OnDeathStarted()
-{
-	Super::OnDeathStarted();
+	Super::OnDeath(bShouldPlayAnimMontage);
 
 	FPCameraComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-
-	if (IsValid(SkeletalMeshComponent))
-	{
-		SkeletalMeshComponent->SetOwnerNoSee(false);
-	}
+	GetMesh()->SetOwnerNoSee(false);
 	FPMeshComponent->SetOwnerNoSee(true);
 }
+
+void AFPPlayerCharacter::StartOutOfStaminaInternal()
+{
+	Super::StartOutOfStaminaInternal();
+
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(true);
+	}
+}
+
+void AFPPlayerCharacter::StopOutOfStaminaInternal()
+{
+	Super::StopOutOfStaminaInternal();
+
+	bUseControllerRotationYaw = false;
+	AXyzPlayerController* PlayerController = CachedPlayerController.Get();
+	if (IsValid(PlayerController))
+	{
+		PlayerController->ShouldIgnoreFPCameraPitch(false);
+	}
+	ForcedTargetControlRotation = GetActorForwardVector().ToOrientationRotator();
+	bWantsToEndOutOfStamina = true;
+	StartFPCameraAlignment();
+}
+#pragma endregion

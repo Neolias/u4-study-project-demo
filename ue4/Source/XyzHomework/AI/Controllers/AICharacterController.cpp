@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "AI/Controllers/AICharacterController.h"
 
 #include "XyzHomeworkTypes.h"
@@ -11,52 +10,46 @@
 #include "Perception/AISense_Damage.h"
 #include "Perception/AISense_Sight.h"
 
-void AAICharacterController::SetPawn(APawn* InPawn)
-{
-	Super::SetPawn(InPawn);
-
-	if (CachedAICharacter.IsValid())
-	{
-		CachedAICharacter->OnTakeAnyDamage.RemoveDynamic(this, &AAICharacterController::OnPawnDamageTaken);
-	}
-
-	if (IsValid(InPawn))
-	{
-		checkf(InPawn->IsA<AAICharacter>(), TEXT("AAICharacterController::SetPawn TurretAIController can posses only AAICharacter objects"));
-		CachedAICharacter = StaticCast<AAICharacter*>(InPawn);
-		RunBehaviorTree(CachedAICharacter->GetBehaviorTree());
-
-		CachedAICharacter->OnTakeAnyDamage.AddDynamic(this, &AAICharacterController::OnPawnDamageTaken);
-	}
-	else
-	{
-		CachedAICharacter = nullptr;
-	}
-}
-
-void AAICharacterController::BeginPlay()
-{
-	Super::BeginPlay();
-
-	TryMoveToNextWayPoint();
-}
-
 void AAICharacterController::ResetCurrentTarget()
 {
 	Blackboard->SetValueAsObject(AICharacterBTCurrentTargetName, nullptr);
 	ClearFocus(EAIFocusPriority::Gameplay);
 }
 
+void AAICharacterController::SetPawn(APawn* InPawn)
+{
+	Super::SetPawn(InPawn);
+
+	AAICharacter* AICharacter = CachedAICharacter.Get();
+	if (IsValid(AICharacter))
+	{
+		AICharacter->OnTakeAnyDamage.RemoveDynamic(this, &AAICharacterController::OnPawnDamageTaken);
+	}
+
+	if (IsValid(InPawn))
+	{
+		checkf(InPawn->IsA<AAICharacter>(), TEXT("AAICharacterController::SetPawn(): AAICharacterController can posses only AAICharacters."));
+		AICharacter = StaticCast<AAICharacter*>(InPawn);
+		AICharacter->OnTakeAnyDamage.AddDynamic(this, &AAICharacterController::OnPawnDamageTaken);
+		CachedAICharacter = AICharacter;
+		RunBehaviorTree(AICharacter->GetBehaviorTree());
+		TryMoveToNextWayPoint();
+	}
+	else
+	{
+		CachedAICharacter.Reset();
+	}
+}
+
 void AAICharacterController::ActorsPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 {
-	//Super::ActorsPerceptionUpdated(UpdatedActors);
-
-	if ((CachedAICharacter.IsValid() && !CachedAICharacter->ShouldFollowEnemies()) || !IsValid(Blackboard))
+	AAICharacter* AICharacter = CachedAICharacter.Get();
+	if (!IsValid(AICharacter) || !AICharacter->ShouldFollowEnemies() || !Blackboard)
 	{
 		return;
 	}
 
-	const FAISenseAffiliationFilter AISenseAffiliationFilter = CachedAICharacter->GetAISenseAffiliationFilter();
+	FAISenseAffiliationFilter AISenseAffiliationFilter = AICharacter->GetAISenseAffiliationFilter();
 	AActor* ClosestSensedActor = GetClosestSensedActor(UAISense_Damage::StaticClass(), AISenseAffiliationFilter);
 	if (!IsValid(ClosestSensedActor))
 	{
@@ -77,7 +70,7 @@ void AAICharacterController::ActorsPerceptionUpdated(const TArray<AActor*>& Upda
 	}
 }
 
-void AAICharacterController::OnMoveCompleted(const FAIRequestID RequestID, const FPathFollowingResult& Result)
+void AAICharacterController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
 {
 	Super::OnMoveCompleted(RequestID, Result);
 	if (!Result.IsSuccess())
@@ -90,13 +83,13 @@ void AAICharacterController::OnMoveCompleted(const FAIRequestID RequestID, const
 
 void AAICharacterController::TryMoveToNextWayPoint()
 {
-	if (!CachedAICharacter.IsValid() || !IsValid(Blackboard))
+	AAICharacter* AICharacter = CachedAICharacter.Get();
+	if (!IsValid(AICharacter) || !Blackboard)
 	{
 		return;
 	}
 
-	UAIPatrollingComponent* PatrollingComponent = CachedAICharacter->GetPatrollingComponent();
-
+	UAIPatrollingComponent* PatrollingComponent = AICharacter->GetPatrollingComponent();
 	if (bIsPatrolling)
 	{
 		FVector NextWayPoint;

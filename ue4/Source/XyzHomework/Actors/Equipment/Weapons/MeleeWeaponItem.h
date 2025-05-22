@@ -8,7 +8,7 @@
 #include "MeleeWeaponItem.generated.h"
 
 class UMeleeHitRegistrationComponent;
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttackActivated, bool);
+
 /**
  *
  */
@@ -18,27 +18,29 @@ class XYZHOMEWORK_API AMeleeWeaponItem : public AEquipmentItem
 	GENERATED_BODY()
 
 public:
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttackActivated, bool);
 	FOnAttackActivated OnAttackActivatedEvent;
 
 	AMeleeWeaponItem();
-	virtual void BeginPlay() override;
 	void StartAttack(EMeleeAttackType AttackType);
 	void EnableHitRegistration(bool bIsHitRegistrationEnabled);
 
 protected:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Mesh")
-	UStaticMeshComponent* MeshComponent;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Parameters | Attacks")
-	TMap<EMeleeAttackType, FMeleeAttackDescription> Attacks;
-
-	UFUNCTION()
+	virtual void BeginPlay() override;
 	void ProcessHit(FVector MovementDirection, const FHitResult& HitResult);
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Melee Weapon")
+	UStaticMeshComponent* MeshComponent;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Melee Weapon")
+	TMap<EMeleeAttackType, FMeleeAttackDescription> Attacks;
+
 private:
-	const FMeleeAttackDescription* CurrentAttackDescription;
+	void EndAttack() const;
+
+	FMeleeAttackDescription* CurrentAttackDescription;
+	UPROPERTY()
 	TArray<UMeleeHitRegistrationComponent*> HitRegistrationComponents;
+	UPROPERTY()
 	TArray<AActor*> HitActors;
 	FTimerHandle AttackTimer;
-
-	void EndAttack();
 };

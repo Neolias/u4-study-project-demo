@@ -8,9 +8,10 @@
 void UAnimNotify_EnableRagdoll::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
 	Super::Notify(MeshComp, Animation);
-	AXyzBaseCharacter* CharacterOwner = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
-	if (IsValid(CharacterOwner))
+	
+	AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
+	if (IsValid(BaseCharacter))
 	{
-		CharacterOwner->EnableRagdoll();
+		BaseCharacter->EnableRagdoll();
 	}
 }

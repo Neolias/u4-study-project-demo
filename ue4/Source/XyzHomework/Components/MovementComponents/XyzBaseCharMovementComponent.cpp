@@ -1,213 +1,307 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
 
-#include "GameFramework/Character.h"
+#include "AbilitySystemComponent.h"
+#include "XyzHomeworkTypes.h"
+#include "Actors/Environment/Ladder.h"
+#include "Actors/Environment/Zipline.h"
+#include "Actors/Equipment/Weapons/RangedWeaponItem.h"
+#include "Characters/XyzBaseCharacter.h"
 #include "Components/CapsuleComponent.h"
-#include "GameFramework/PhysicsVolume.h"
+#include "Components/CharacterComponents/CharacterEquipmentComponent.h"
 #include "Curves/CurveVector.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/PhysicsVolume.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "ProfilingDebugging/CookStats.h"
 
-#include "XyzHomeworkTypes.h"
-#include "Actors/Equipment/Weapons/RangedWeaponItem.h"
-#include "Characters/XyzBaseCharacter.h"
-#include "Components/CharacterComponents/CharacterAttributesComponent.h"
-#include "Actors/Interactive/Environment/Ladder.h"
-#include "Actors/Interactive/Environment/Zipline.h"
-#include "Components/CharacterComponents/CharacterEquipmentComponent.h"
+#pragma region REPLICATION
+
+void FSavedMove_XyzCharacter::Clear()
+{
+	Super::Clear();
+
+	SavedCustomCompressedFlags = 0;
+	SavedWallRunElapsedTime = 0.f;
+}
+
+void FSavedMove_XyzCharacter::SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData)
+{
+	Super::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
+
+	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::SetMoveFor: FSavedMove_XyzCharacter can only be used with AXyzBaseCharacter."))
+	const AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
+	const UXyzBaseCharMovementComponent* BaseCharMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
+
+	SavedCustomCompressedFlags = 0;
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::Crouch))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsCrouching;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::Prone))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsProne;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::Sprint))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsSprinting;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::Slide))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsSliding;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::OutOfStamina))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsOutOfStamina;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::Dive))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsDiving;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::AimWeapon))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsAiming;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::ReloadWeapon))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsReloading;
+	}
+	if (BaseCharMovementComponent->GetMovementFlag((uint32)EGameplayAbility::ThrowItem))
+	{
+		SavedCustomCompressedFlags |= FLAG_IsThrowing;
+	}
+
+	SavedWallRunElapsedTime = BaseCharMovementComponent->WallRunElapsedTime;
+}
+
+bool FSavedMove_XyzCharacter::CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* InCharacter, float MaxDelta) const
+{
+	const FSavedMove_XyzCharacter* NewMove = StaticCast<FSavedMove_XyzCharacter*>(NewMovePtr.Get());
+	if (NewMove->SavedCustomCompressedFlags != SavedCustomCompressedFlags || NewMove->SavedWallRunElapsedTime != SavedWallRunElapsedTime)
+	{
+		return false;
+	}
+
+	return Super::CanCombineWith(NewMovePtr, InCharacter, MaxDelta);
+}
+
+void FSavedMove_XyzCharacter::PrepMoveFor(ACharacter* Character)
+{
+	Super::PrepMoveFor(Character);
+
+	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::PrepMoveFor: FSavedMove_XyzCharacter can only be used with AXyzBaseCharacter."))
+	const AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
+	UXyzBaseCharMovementComponent* BaseCharMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
+
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Crouch, SavedCustomCompressedFlags & FLAG_IsCrouching && BaseCharacter->IsCrouching());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Prone, SavedCustomCompressedFlags & FLAG_IsProne && BaseCharacter->IsProne());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Sprint, SavedCustomCompressedFlags & FLAG_IsSprinting && BaseCharacter->IsSprinting());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Slide, SavedCustomCompressedFlags & FLAG_IsSliding && BaseCharacter->IsSliding());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, SavedCustomCompressedFlags & FLAG_IsOutOfStamina && BaseCharacter->IsOutOfStamina());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Dive, SavedCustomCompressedFlags & FLAG_IsDiving && BaseCharacter->IsDiving());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::AimWeapon, SavedCustomCompressedFlags & FLAG_IsAiming && BaseCharacter->IsAiming());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ReloadWeapon, SavedCustomCompressedFlags & FLAG_IsReloading && BaseCharacter->IsReloadingWeapon());
+	BaseCharMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ThrowItem, SavedCustomCompressedFlags & FLAG_IsThrowing && BaseCharacter->IsThrowingItem());
+
+	BaseCharMovementComponent->WallRunElapsedTime = SavedWallRunElapsedTime;
+}
+
+FNetworkPredictionData_Client_XyzCharacter::FNetworkPredictionData_Client_XyzCharacter(const UCharacterMovementComponent& ClientMovement)
+	: Super(ClientMovement) {}
+
+FSavedMovePtr FNetworkPredictionData_Client_XyzCharacter::AllocateNewMove()
+{
+	return FSavedMovePtr(new FSavedMove_XyzCharacter());
+}
+
+bool FXyzNetworkMoveData::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType)
+{
+	if (!Super::Serialize(CharacterMovement, Ar, PackageMap, MoveType))
+	{
+		return false;
+	}
+
+	bool bIsSaving = Ar.IsSaving();
+	SerializeOptionalValue<uint16>(bIsSaving, Ar, CustomCompressedFlags, 0);
+	Ar << WallRunElapsedTime;
+
+	return !Ar.IsError();
+}
+
+void FXyzNetworkMoveData::ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType)
+{
+	Super::ClientFillNetworkMoveData(ClientMove, MoveType);
+
+	const FSavedMove_XyzCharacter& CustomClientMove = StaticCast<const FSavedMove_XyzCharacter&>(ClientMove);
+	CustomCompressedFlags = CustomClientMove.SavedCustomCompressedFlags;
+	WallRunElapsedTime = CustomClientMove.SavedWallRunElapsedTime;
+}
+#pragma endregion
+
+UXyzBaseCharMovementComponent::UXyzBaseCharMovementComponent()
+{
+	MovementFlags.AddZeroed((uint32)EGameplayAbility::Max);
+	SetNetworkMoveDataContainer(XyzNetworkMoveDataContainer);
+}
 
 void UXyzBaseCharMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	AActor* Owner = GetOwner();
-	checkf(Owner->IsA<AXyzBaseCharacter>(), TEXT("UXyzBaseCharMovementComponent::BeginPlay() should be used only with AXyzBaseCharacter"))
-		BaseCharacter = StaticCast<AXyzBaseCharacter*>(Owner);
-	if (IsValid(BaseCharacter))
+	checkf(GetOwner()->IsA<AXyzBaseCharacter>(), TEXT("UXyzBaseCharMovementComponent::BeginPlay(): UXyzBaseCharMovementComponent can only be used with AXyzBaseCharacter."))
+	BaseCharacterOwner = StaticCast<AXyzBaseCharacter*>(GetOwner());
+	if (IsValid(BaseCharacterOwner))
 	{
-		CharacterAttributesComponent = BaseCharacter->GetCharacterAttributesComponent();
-		CharacterEquipmentComponent = BaseCharacter->GetCharacterEquipmentComponent();
+		CharacterEquipmentComponent = BaseCharacterOwner->GetCharacterEquipmentComponent();
 	}
+
+	CachedBuoyancy = Buoyancy;
 }
 
-// Network
-
-FNetworkPredictionData_Client* UXyzBaseCharMovementComponent::GetPredictionData_Client() const
+float UXyzBaseCharMovementComponent::GetMaxSpeed() const
 {
-	if (ClientPredictionData == nullptr)
+	switch (MovementMode)
 	{
-		UXyzBaseCharMovementComponent* MutableThis = const_cast<UXyzBaseCharMovementComponent*>(this);
-		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_XyzCharacter(*this);
+		case MOVE_Walking:
+		case MOVE_NavWalking:
+			if (GetMovementFlag((uint32)EGameplayAbility::Prone))
+			{
+				return ProneSpeed;
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::Crouch))
+			{
+				return MaxWalkSpeedCrouched;
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::OutOfStamina))
+			{
+				return OutOfStaminaSpeed;
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::ThrowItem))
+			{
+				return BaseCharacterOwner->GetCurrentThrowItemMovementSpeed();
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::ReloadWeapon))
+			{
+				return BaseCharacterOwner->GetCurrentReloadingWalkSpeed();
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::AimWeapon))
+			{
+				return BaseCharacterOwner->GetCurrentAimingMovementSpeed();
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::Slide))
+			{
+				return SlideSpeed;
+			}
+			if (GetMovementFlag((uint32)EGameplayAbility::Sprint))
+			{
+				return SprintSpeed;
+			}
+			return MaxWalkSpeed;
+		case MOVE_Custom:
+			if (CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_Ladder)
+			{
+				return ClimbingOnLadderMaxSpeed;
+			}
+			if (CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_Zipline)
+			{
+				return ZiplineMovementMaxSpeed;
+			}
+			if (CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_WallRun)
+			{
+				return WallRunMaxSpeed;
+			}
+			return MaxCustomMovementSpeed;
+		case MOVE_Falling:
+			return MaxWalkSpeed;
+		case MOVE_Swimming:
+			if (GetMovementFlag((uint32)EGameplayAbility::Dive))
+			{
+				return DiveSpeed;
+			}
+			return MaxSwimSpeed;
+		case MOVE_Flying:
+			return MaxFlySpeed;
+		case MOVE_None:
+		default:
+			return 0.f;
 	}
-
-	return Super::GetPredictionData_Client();
 }
 
-void UXyzBaseCharMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
-{
-	//  FLAG_JumpPressed = 0x01,	// Jump pressed
-	//	FLAG_WantsToCrouch = 0x02,	// Wants to crouch
-	//	FLAG_Reserved_1 = 0x04,	// Reserved for future use
-	//	FLAG_Reserved_2 = 0x08,	// Reserved for future use
-	//	// Remaining bit masks are available for custom flags.
-	//	FLAG_Custom_0 = 0x10, // Sprinting
-	//	FLAG_Custom_1 = 0x20, // Mantling
-	//	FLAG_Custom_2 = 0x40, // PressingSlide
-	//	FLAG_Custom_3 = 0x80,
-
-	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
-	{
-		if (Flags & FSavedMove_Character::FLAG_Custom_0)
-		{
-			StartSprint();
-		}
-		else
-		{
-			StopSprint();
-		}
-
-		if (Flags & FSavedMove_Character::FLAG_Custom_1 && !IsMantling())
-		{
-			BaseCharacter->Mantle(true);
-		}
-
-		if (Flags & FSavedMove_Character::FLAG_Custom_2 && !bIsSliding)
-		{
-			StartSlide();
-		}
-	}
-
-	Super::UpdateFromCompressedFlags(Flags);
-}
-
-// General
-
-void UXyzBaseCharMovementComponent::OnMovementModeChanged(const EMovementMode PreviousMovementMode, const uint8 PreviousCustomMode)
+void UXyzBaseCharMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
 
 	switch (MovementMode)
 	{
-	case MOVE_Swimming:
-		if (IsValid(CharacterEquipmentComponent) && CharacterEquipmentComponent->IsMeleeAttackActive())
-		{
-			CharacterEquipmentComponent->SetIsMeleeAttackActive(false);
-		}
-		if (IsCrouching())
-		{
-			if (IsProne())
-			{
-				UnProne();
-				bWantsToProne = false;
-			}
-			UnCrouch();
-			bWantsToCrouch = false;
-		}
-		BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
-		break;
-	case MOVE_Walking:
-		ForceTargetRotation = FRotator::ZeroRotator;
-		bForceRotation = false;
-		CurrentWallRunSide = EWallRunSide::None;
+		case MOVE_Walking:
+			ForceTargetRotation = FRotator::ZeroRotator;
+			bForceRotation = false;
+			CurrentWallRunSide = EWallRunSide::None;
 
-		if (PreviousMovementMode == MOVE_Falling)
-		{
-			bCanUseSameWallRunSide = false;
-		}
-		break;
-	case MOVE_Falling:
-		bNotifyApex = true;
-		break;
-	case MOVE_Custom:
-		if (CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_Mantling)
-		{
-			GetWorld()->GetTimerManager().SetTimer(MantlingTimer, this, &UXyzBaseCharMovementComponent::EndMantle, CurrentMantlingParameters.Duration, false);
-		}
-		break;
-	default:
-		break;
+			if (PreviousMovementMode == MOVE_Falling)
+			{
+				bCanUseSameWallRunSide = false;
+			}
+			break;
+		case MOVE_Falling:
+			bNotifyApex = true;
+			break;
+		default:
+			break;
 	}
 
 	if (PreviousMovementMode == MOVE_Swimming)
 	{
-		const ACharacter* DefaultCharacter = BaseCharacter->GetClass()->GetDefaultObject<ACharacter>();
-		BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), true);
-		bIsSwimmingOnWaterPlane = false;
-		bIsDiving = false;
+		OnDiving(false);
+		SetSwimmingOnWaterPlane(false);
 	}
 }
 
-void UXyzBaseCharMovementComponent::UpdateCharacterStateBeforeMovement(const float DeltaSeconds)
+void UXyzBaseCharMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 {
-	if (bIsProne && (!bWantsToProne || !CanProneInCurrentState()))
+	if (BaseCharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
 	{
-		UnProne();
+		return;
 	}
-	else if (!bIsProne && bWantsToProne && CanProneInCurrentState())
+
+	switch (CustomMovementMode)
 	{
-		Prone();
+		case (uint8)ECustomMovementMode::CMOVE_Mantling:
+			{
+				PhysMantling(DeltaTime, Iterations);
+				break;
+			}
+		case (uint8)ECustomMovementMode::CMOVE_Ladder:
+			{
+				PhysLadder(DeltaTime, Iterations);
+				break;
+			}
+		case (uint8)ECustomMovementMode::CMOVE_Zipline:
+			{
+				PhysZipline(DeltaTime, Iterations);
+				break;
+			}
+		case (uint8)ECustomMovementMode::CMOVE_WallRun:
+			{
+				PhysWallRun(DeltaTime, Iterations);
+				break;
+			}
+		default:
+			break;
 	}
-	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+
+	Super::PhysCustom(DeltaTime, Iterations);
 }
 
-float UXyzBaseCharMovementComponent::GetMaxSpeed() const
-{
-	float Result = Super::GetMaxSpeed();
-
-	if (IsValid(CharacterAttributesComponent) && CharacterAttributesComponent->IsOutOfStamina())
-	{
-		Result = OutOfStaminaSpeed;
-	}
-	else if (bIsProne)
-	{
-		Result = ProneSpeed;
-	}
-	else if (IsOnLadder())
-	{
-		Result = ClimbingOnLadderMaxSpeed;
-	}
-	else if (IsOnZipline())
-	{
-		Result = ZiplineMovementMaxSpeed;
-	}
-	else if (IsWallRunning())
-	{
-		Result = WallRunMaxSpeed;
-	}
-	else if (IsValid(CharacterEquipmentComponent) && CharacterEquipmentComponent->IsThrowingItem())
-	{
-		Result = BaseCharacter->GetCurrentThrowItemMovementSpeed();
-	}
-	else if (IsValid(CharacterEquipmentComponent) && CharacterEquipmentComponent->IsReloadingWeapon())
-	{
-		Result = BaseCharacter->GetCurrentReloadingWalkSpeed();
-	}
-	else if (IsValid(BaseCharacter) && BaseCharacter->IsAiming())
-	{
-		Result = BaseCharacter->GetCurrentAimingMovementSpeed();
-	}
-	else if (bIsSprinting)
-	{
-		Result = SprintSpeed;
-	}
-	else if (bIsSliding)
-	{
-		Result = SlideSpeed;
-	}
-
-	return Result;
-}
-
-void UXyzBaseCharMovementComponent::PhysicsRotation(const float DeltaTime)
+void UXyzBaseCharMovementComponent::PhysicsRotation(float DeltaTime)
 {
 	if (bForceRotation)
 	{
-		const FRotator CurrentRotation = UpdatedComponent->GetComponentRotation();
+		FRotator CurrentRotation = UpdatedComponent->GetComponentRotation();
 		CurrentRotation.DiagnosticCheckNaN(TEXT("CharacterMovementComponent::PhysicsRotation(): CurrentRotation"));
 
-		const FRotator DeltaRot = GetDeltaRotation(DeltaTime);
+		FRotator DeltaRot = GetDeltaRotation(DeltaTime);
 		DeltaRot.DiagnosticCheckNaN(TEXT("CharacterMovementComponent::PhysicsRotation(): GetDeltaRotation"));
 
 		constexpr float AngleTolerance = 1e-3f;
@@ -249,250 +343,203 @@ void UXyzBaseCharMovementComponent::PhysicsRotation(const float DeltaTime)
 	Super::PhysicsRotation(DeltaTime);
 }
 
-void UXyzBaseCharMovementComponent::PhysCustom(const float DeltaTime, const int32 Iterations)
+#pragma region REPLICATION
+
+FNetworkPredictionData_Client* UXyzBaseCharMovementComponent::GetPredictionData_Client() const
 {
-	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
+	if (ClientPredictionData == nullptr)
 	{
-		return;
+		UXyzBaseCharMovementComponent* MutableThis = const_cast<UXyzBaseCharMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_XyzCharacter(*this);
 	}
 
-	switch (CustomMovementMode)
-	{
-	case (uint8)ECustomMovementMode::CMOVE_Mantling:
-	{
-		PhysMantling(DeltaTime, Iterations);
-		break;
-	}
-	case (uint8)ECustomMovementMode::CMOVE_Ladder:
-	{
-		PhysLadder(DeltaTime, Iterations);
-		break;
-	}
-	case (uint8)ECustomMovementMode::CMOVE_Zipline:
-	{
-		PhysZipline(DeltaTime, Iterations);
-		break;
-	}
-	case (uint8)ECustomMovementMode::CMOVE_WallRun:
-	{
-		PhysWallRun(DeltaTime, Iterations);
-		break;
-	}
-	default:
-		break;
-	}
-
-	Super::PhysCustom(DeltaTime, Iterations);
+	return Super::GetPredictionData_Client();
 }
 
-// Swimming
-
-bool UXyzBaseCharMovementComponent::IsSwimmingUnderWater(const FVector Delta) const
+void UXyzBaseCharMovementComponent::MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel)
 {
-	if (Delta == FVector::ZeroVector && bIsSwimmingOnWaterPlane)
+	const FXyzNetworkMoveData* CustomMoveData = StaticCast<FXyzNetworkMoveData*>(GetCurrentNetworkMoveData());
+
+	uint16 CustomFlags = CustomMoveData->CustomCompressedFlags;
+	SetMovementFlag((uint32)EGameplayAbility::Crouch, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsCrouching && BaseCharacterOwner->IsCrouching());
+	SetMovementFlag((uint32)EGameplayAbility::Prone, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsProne && BaseCharacterOwner->IsProne());
+	SetMovementFlag((uint32)EGameplayAbility::Sprint, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsSprinting && BaseCharacterOwner->IsSprinting());
+	SetMovementFlag((uint32)EGameplayAbility::Slide, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsSliding && BaseCharacterOwner->IsSliding());
+	SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsOutOfStamina && BaseCharacterOwner->IsOutOfStamina());
+	SetMovementFlag((uint32)EGameplayAbility::Dive, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsDiving && BaseCharacterOwner->IsDiving());
+	SetMovementFlag((uint32)EGameplayAbility::AimWeapon, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsAiming && BaseCharacterOwner->IsAiming());
+	SetMovementFlag((uint32)EGameplayAbility::ReloadWeapon, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsReloading && BaseCharacterOwner->IsReloadingWeapon());
+	SetMovementFlag((uint32)EGameplayAbility::ThrowItem, CustomFlags & FSavedMove_XyzCharacter::FLAG_IsThrowing && BaseCharacterOwner->IsThrowingItem());
+
+	WallRunElapsedTime = CustomMoveData->WallRunElapsedTime;
+
+	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAccel);
+}
+
+bool UXyzBaseCharMovementComponent::GetMovementFlag(uint32 FlagIndex) const
+{
+	return FlagIndex < (uint32)MovementFlags.Num() && MovementFlags[FlagIndex];
+}
+
+void UXyzBaseCharMovementComponent::SetMovementFlag(uint32 FlagIndex, bool bIsActivated)
+{
+	if (FlagIndex < (uint32)MovementFlags.Num())
 	{
-		return false;
+		MovementFlags[FlagIndex] = bIsActivated;
+	}
+}
+#pragma endregion
+
+#pragma region SWIMMING
+
+FRotator UXyzBaseCharMovementComponent::ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const
+{
+	FRotator Result;
+	if (Acceleration.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		// AI path following request can orient us in that direction (it's effectively an acceleration)
+		if (bHasRequestedVelocity && RequestedVelocity.SizeSquared() > KINDA_SMALL_NUMBER)
+		{
+			Result = RequestedVelocity.GetSafeNormal().Rotation();
+		}
+		else
+		{
+			// Don't change rotation if there is no acceleration.
+			Result = CurrentRotation;
+		}
+	}
+	else
+	{
+		// Rotate toward direction of acceleration.
+		Result = Acceleration.GetSafeNormal().Rotation();
 	}
 
+	if (IsSwimming())
+	{
+		Result.Pitch = BaseCharacterOwner->GetControlRotation().Pitch;
+	}
+	return Result;
+}
+
+void UXyzBaseCharMovementComponent::UpdateSwimmingCapsuleSize()
+{
+	if (IsSwimming())
+	{
+		BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
+	}
+	else
+	{
+		const ACharacter* DefaultCharacter = BaseCharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+		BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), true);
+	}
+}
+
+void UXyzBaseCharMovementComponent::Multicast_UpdateSwimmingCapsuleSize_Implementation()
+{
+	UpdateSwimmingCapsuleSize();
+}
+
+void UXyzBaseCharMovementComponent::SetSwimmingOnWaterPlane(bool bInIsSwimmingOnWaterPlane)
+{
+	bIsSwimmingOnWaterPlane = bInIsSwimmingOnWaterPlane;
+}
+
+bool UXyzBaseCharMovementComponent::IsSwimmingUnderWater(FVector LocationOffset) const
+{
 	const APhysicsVolume* Volume = GetPhysicsVolume();
-	const float VolumeTopPlane = Volume->GetActorLocation().Z + Volume->GetBounds().BoxExtent.Z * Volume->GetActorScale3D().Z;
-	const float HeadPositionZ = BaseCharacter->GetMesh()->GetSocketLocation(HeadBoneName).Z;
-	if (HeadPositionZ + Delta.Z < VolumeTopPlane)
+	float VolumeTopPlane = Volume->GetActorLocation().Z + Volume->GetBounds().BoxExtent.Z * Volume->GetActorScale3D().Z;
+	float HeadPositionZ = BaseCharacterOwner->GetActorLocation().Z + WaterPlaneDetectionRangeZ;
+	if (HeadPositionZ + LocationOffset.Z < VolumeTopPlane)
 	{
 		return true;
 	}
 	return false;
 }
 
-bool UXyzBaseCharMovementComponent::IsSwimmingOnWaterPlane() const
+void UXyzBaseCharMovementComponent::OnDiving(bool bIsDiving)
 {
-	return IsSwimming() && bIsSwimmingOnWaterPlane;
+	SetSwimmingOnWaterPlane(bIsDiving ? false : bIsSwimmingOnWaterPlane);
+	BaseCharacterOwner->OnDiving(bIsDiving);
 }
 
-void UXyzBaseCharMovementComponent::SwimUp(const float Value)
-{
-	if (!IsSwimming() || bIsDiving || FMath::IsNearlyZero(Value))
-	{
-		bIsSwimmingUp = false;
-		TargetSwimUpSpeed = Velocity.Z;
-	}
-	else
-	{
-		bIsSwimmingUp = true;
-		TargetSwimUpSpeed = GetMaxSpeed() * Value;
-	}
-}
-
-void UXyzBaseCharMovementComponent::StartDive()
-{
-	if (bIsSwimmingOnWaterPlane)
-	{
-		bIsDiving = true;
-		GetWorld()->GetTimerManager().SetTimer(DiveTimer, this, &UXyzBaseCharMovementComponent::StopDive, DiveActionLength, false);
-	}
-}
-
-void UXyzBaseCharMovementComponent::StopDive()
-{
-	bIsDiving = false;
-}
-
-void UXyzBaseCharMovementComponent::PhysSwimming(const float DeltaTime, const int32 Iterations)
+void UXyzBaseCharMovementComponent::PhysSwimming(float DeltaTime, int32 Iterations)
 {
 	Super::PhysSwimming(DeltaTime, Iterations);
 
-	if (bIsDiving)
+	if (bIsSwimmingOnWaterPlane && !BaseCharacterOwner->IsDiveAbilityActive())
 	{
-		Velocity.Z = -DiveSpeed;
-		const FVector Delta = Velocity * DeltaTime;
-		if (IsSwimmingUnderWater(Delta))
-		{
-			bIsSwimmingOnWaterPlane = false;
-		}
-	}
-	else if (bIsSwimmingOnWaterPlane)
-	{
-		const FVector CurrentLocation = BaseCharacter->GetActorLocation();
-		const FVector WaterPlaneLocation = FindWaterLine(CurrentLocation, CurrentLocation + BaseCharacter->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * FVector::UpVector);
-		const FVector Delta = (WaterPlaneLocation - CurrentLocation) * DeltaTime;
-		FHitResult Hit;
 		Velocity.Z = 0.f;
-		SafeMoveUpdatedComponent(Delta, BaseCharacter->GetActorRotation(), false, Hit);
-	}
-	else if (IsSwimmingUnderWater())
-	{
-		const FVector Delta = Velocity * DeltaTime;
-		if (!IsSwimmingUnderWater(Delta + WaterPlaneDetectionOffset))
+		Buoyancy = 1.f;
+		FVector TestStartLocation = BaseCharacterOwner->GetActorLocation();
+		FVector WaterPlaneLocation = FindWaterLine(TestStartLocation, TestStartLocation + FVector::UpVector * WaterPlaneDetectionRangeZ);
+		FVector Delta = WaterPlaneLocation - TestStartLocation + FVector::UpVector * WaterSnappingOffsetZ;
+		float SpeedDelta = EmergeSpeed * DeltaTime;
+		if (Delta.Z > SpeedDelta)
 		{
-			bIsSwimmingOnWaterPlane = true;
+			FVector EmergeDirection = WaterPlaneLocation - TestStartLocation;
+			EmergeDirection.Normalize();
+			Delta = FVector::UpVector * SpeedDelta;
 		}
-
-		if (bIsSwimmingUp)
-		{
-			FVector TargetVelocity = Velocity;
-			TargetVelocity.Z = TargetSwimUpSpeed;
-			Velocity = TargetVelocity.GetSafeNormal() * GetMaxSpeed();
-			const FRotator TargetRotation = FMath::RInterpTo(BaseCharacter->GetActorRotation(), Velocity.ToOrientationRotator(), DeltaTime, SwimPitchRotationInterpSpeed);
-			MoveUpdatedComponent(FVector::ZeroVector, TargetRotation, false);
-		}
+		FHitResult Hit;
+		SafeMoveUpdatedComponent(Delta, BaseCharacterOwner->GetActorRotation(), false, Hit);
 	}
-
-	GEngine->AddOnScreenDebugMessage(11, 1.f, FColor::Yellow, FString::Printf(TEXT("bIsSwimmingOnWaterPlane: %hhd"), bIsSwimmingOnWaterPlane));
-}
-
-// Jumping
-
-bool UXyzBaseCharMovementComponent::CanAttemptJump() const
-{
-	return !bIsSliding && !CharacterAttributesComponent->IsOutOfStamina() && !CharacterEquipmentComponent->IsMeleeAttackActive() && Super::CanAttemptJump();
-}
-
-bool UXyzBaseCharMovementComponent::DoJump(const bool bReplayingMoves)
-{
-	if (IsMovingOnGround())
+	else
 	{
-		const float NewStamina = FMath::Clamp(CharacterAttributesComponent->GetCurrentStamina() - StaminaConsumptionPerJump, 0.f, CharacterAttributesComponent->GetMaxStamina());
-		CharacterAttributesComponent->SetCurrentStamina(NewStamina);
+		Buoyancy = CachedBuoyancy;
+		if (!BaseCharacterOwner->IsDiving())
+		{
+			if (IsSwimmingUnderWater())
+			{
+				OnDiving(true);
+			}
+		}
+		else if (!IsSwimmingUnderWater(Velocity * DeltaTime))
+		{
+			OnDiving(false);
+			SetSwimmingOnWaterPlane(true);
+		}
 	}
-
-	return Super::DoJump(bReplayingMoves);
 }
+#pragma endregion
 
-// Sprinting
+#pragma region SPRINTING / SLIDING
 
 void UXyzBaseCharMovementComponent::StartSprint()
 {
-	if (bIsSprinting)
-	{
-		return;
-	}
-
-	bIsSprinting = true;
 	bForceMaxAccel = 1;
-	BaseCharacter->OnSprintStart();
-
-	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
-	{
-		Multicast_StartSprint();
-	}
-}
-
-void UXyzBaseCharMovementComponent::Multicast_StartSprint_Implementation()
-{
-	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		StartSprint();
-	}
+	SetMovementFlag((uint32)EGameplayAbility::Sprint, true);
+	BaseCharacterOwner->OnStartSprint();
 }
 
 void UXyzBaseCharMovementComponent::StopSprint()
 {
-	if (!bIsSprinting)
-	{
-		return;
-	}
-
-	bIsSprinting = false;
 	bForceMaxAccel = 0;
-	BaseCharacter->OnSprintStop();
-
-	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
-	{
-		Multicast_StopSprint();
-	}
-}
-
-void UXyzBaseCharMovementComponent::Multicast_StopSprint_Implementation()
-{
-	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		StopSprint();
-	}
-}
-
-// Sliding
-
-bool UXyzBaseCharMovementComponent::CanSlide() const
-{
-	return bIsSprinting && !bIsSliding && !CharacterAttributesComponent->IsOutOfStamina() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics();
+	SetMovementFlag((uint32)EGameplayAbility::Sprint, false);
+	BaseCharacterOwner->OnStopSprint();
 }
 
 void UXyzBaseCharMovementComponent::StartSlide()
 {
-	if (!CanSlide() || BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == SlideCapsuleHalfHeight)
+	if (BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == SlideCapsuleHalfHeight)
 	{
+		SetMovementFlag((uint32)EGameplayAbility::Slide, true);
+		BaseCharacterOwner->OnStartSlide(0.f, 0.f);
 		return;
 	}
 
-	const float NewStamina = FMath::Clamp(CharacterAttributesComponent->GetCurrentStamina() - StaminaConsumptionPerSlide, 0.f, CharacterAttributesComponent->GetMaxStamina());
-	CharacterAttributesComponent->SetCurrentStamina(NewStamina);
+	float ComponentScale = BaseCharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float OldUnscaledHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	float ClampedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, SlideCapsuleHalfHeight);
+	BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedHalfHeight);
 
-	const float ComponentScale = BaseCharacter->GetCapsuleComponent()->GetShapeScale();
-	const float OldUnscaledHalfHeight = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	const float OldUnscaledRadius = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
-	const float ClampedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, SlideCapsuleHalfHeight);
-	BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedHalfHeight);
-
-	const float HalfHeightAdjust = OldUnscaledHalfHeight - ClampedHalfHeight;
-	const float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	float HalfHeightAdjust = OldUnscaledHalfHeight - ClampedHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 	UpdatedComponent->MoveComponent(FVector(0.f, 0.f, -ScaledHalfHeightAdjust), UpdatedComponent->GetComponentQuat(), true, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
 
-	bIsSliding = true;
 	bForceNextFloorCheck = true;
-	BaseCharacter->OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
-
-	if (BaseCharacter->GetLocalRole() == ROLE_Authority)
-	{
-		Multicast_StartSlide();
-	}
-}
-
-void UXyzBaseCharMovementComponent::Multicast_StartSlide_Implementation()
-{
-	if (BaseCharacter->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		StartSlide();
-	}
+	SetMovementFlag((uint32)EGameplayAbility::Slide, true);
+	BaseCharacterOwner->OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
 void UXyzBaseCharMovementComponent::StopSlide()
@@ -502,40 +549,42 @@ void UXyzBaseCharMovementComponent::StopSlide()
 		return;
 	}
 
-	ACharacter* DefaultCharacter = BaseCharacter->GetClass()->GetDefaultObject<ACharacter>();
+	ACharacter* DefaultCharacter = BaseCharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	float OldUnscaledHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	float ClampedSlideHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, SlideCapsuleHalfHeight);
 
-	if (BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight())
+	if (OldUnscaledHalfHeight != ClampedSlideHalfHeight)
 	{
-		bIsSliding = false;
-		BaseCharacter->OnStopSlide(0.f, 0.f);
+		SetMovementFlag((uint32)EGameplayAbility::Slide, false);
+		BaseCharacterOwner->OnStopSlide(0.f, 0.f);
 		return;
 	}
 
-	const float CurrentHalfHeight = BaseCharacter->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const float ComponentScale = BaseCharacter->GetCapsuleComponent()->GetShapeScale();
-	const float OldUnscaledHalfHeight = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	const float HalfHeightAdjust = DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() - OldUnscaledHalfHeight;
-	const float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
-	const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
+	float CurrentHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float ComponentScale = BaseCharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float HalfHeightAdjust = DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() - OldUnscaledHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	FVector PawnLocation = UpdatedComponent->GetComponentLocation();
 
-	check(BaseCharacter->GetCapsuleComponent());
+	check(BaseCharacterOwner->GetCapsuleComponent());
 	const UWorld* MyWorld = GetWorld();
-	const float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
-	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(ProneTrace), false, BaseCharacter);
+	float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(ProneTrace), false, BaseCharacterOwner);
 	FCollisionResponseParams ResponseParam;
 	InitCollisionParams(CapsuleParams, ResponseParam);
-	const FCollisionShape StandingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust);
-	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	FCollisionShape StandingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust);
+	ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
 	bool bEncroached = true;
 
 	FVector StandingLocation = PawnLocation + (StandingCapsuleShape.GetCapsuleHalfHeight() - CurrentHalfHeight) * FVector::UpVector;
 	bEncroached = MyWorld->OverlapBlockingTestByChannel(StandingLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
 
-	if (bEncroached) {
-
+	if (bEncroached)
+	{
 		if (IsMovingOnGround())
 		{
-			const float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
+			float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
 			if (CurrentFloor.bBlockingHit && CurrentFloor.FloorDist > MinFloorDist)
 			{
 				StandingLocation.Z -= CurrentFloor.FloorDist - MinFloorDist;
@@ -544,97 +593,382 @@ void UXyzBaseCharMovementComponent::StopSlide()
 		}
 	}
 
-	BaseCharacter->OnStopSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
 	UpdatedComponent->MoveComponent(StandingLocation - PawnLocation, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
 	bForceNextFloorCheck = true;
-	bIsSliding = false;
-	BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), true);
+	BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), true);
 	AdjustProxyCapsuleSize();
+	SetMovementFlag((uint32)EGameplayAbility::Slide, false);
+	BaseCharacterOwner->OnStopSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
+}
+#pragma endregion
 
-	if (bEncroached)
-	{
-		Crouch();
-	}
+#pragma region CROUCHING / PRONE
+
+void UXyzBaseCharMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
+{
+	// Disabling this logic
+	//Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 }
 
-void UXyzBaseCharMovementComponent::UnCrouch(const bool bClientSimulation/* = false*/)
+void UXyzBaseCharMovementComponent::UpdateCharacterStateAfterMovement(float DeltaSeconds)
 {
-	if (!BaseCharacter->CanUnCrouch())
+	// Disabling this logic
+	//Super::UpdateCharacterStateAfterMovement(DeltaSeconds);
+}
+
+bool UXyzBaseCharMovementComponent::IsCrouching() const
+{
+	return BaseCharacterOwner->IsCrouching();
+}
+
+bool UXyzBaseCharMovementComponent::CanUnCrouch() const
+{
+	if (!HasValidData())
+	{
+		return false;
+	}
+
+	bool Result = false;
+
+	// Same overlap test as in UCharacterMovementComponent::UnCrouch
+	ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	check(BaseCharacterOwner->GetCapsuleComponent());
+	float CurrentCrouchedHalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float HalfHeightAdjust = DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() - OldUnscaledHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	FVector PawnLocation = UpdatedComponent->GetComponentLocation();
+	const UWorld* MyWorld = GetWorld();
+	float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
+	FCollisionResponseParams ResponseParam;
+	InitCollisionParams(CapsuleParams, ResponseParam);
+	FCollisionShape StandingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust); // Shrink by negative amount, so actually grow it.
+	ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	FVector StandingLocation = PawnLocation + FVector(0.f, 0.f, StandingCapsuleShape.GetCapsuleHalfHeight() - CurrentCrouchedHalfHeight);
+
+	Result = !MyWorld->OverlapBlockingTestByChannel(StandingLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+	if (!Result)
+	{
+		if (IsMovingOnGround())
+		{
+			float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
+			if (CurrentFloor.bBlockingHit && CurrentFloor.FloorDist > MinFloorDist)
+			{
+				StandingLocation.Z -= CurrentFloor.FloorDist - MinFloorDist;
+				Result = !MyWorld->OverlapBlockingTestByChannel(StandingLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+			}
+		}
+	}
+
+	return Result;
+}
+
+void UXyzBaseCharMovementComponent::Crouch(bool bClientSimulation/* = false*/)
+{
+	// Mostly copied from UCharacterMovementComponent excluding replication
+
+	if (!HasValidData())
 	{
 		return;
 	}
 
-	Super::UnCrouch(bClientSimulation);
+	if (!CanCrouchInCurrentState())
+	{
+		return;
+	}
+
+	float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	// Height is not allowed to be smaller than radius.
+	float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+
+	// See if collision is already at desired size.
+	if (OldUnscaledHalfHeight == ClampedCrouchedHalfHeight)
+	{
+		SetMovementFlag((uint32)EGameplayAbility::Crouch, true);
+		CharacterOwner->OnStartCrouch(0.f, 0.f);
+		return;
+	}
+
+	// Change collision size to crouching dimensions
+	float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedCrouchedHalfHeight);
+	float HalfHeightAdjust = (OldUnscaledHalfHeight - ClampedCrouchedHalfHeight);
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+
+	// Crouching to a larger height? (this is rare)
+	if (ClampedCrouchedHalfHeight > OldUnscaledHalfHeight)
+	{
+		FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
+		FCollisionResponseParams ResponseParam;
+		InitCollisionParams(CapsuleParams, ResponseParam);
+		bool bEncroached = GetWorld()->OverlapBlockingTestByChannel(UpdatedComponent->GetComponentLocation() - FVector(0.f, 0.f, ScaledHalfHeightAdjust), FQuat::Identity,
+		                                                            UpdatedComponent->GetCollisionObjectType(), GetPawnCapsuleCollisionShape(SHRINK_None), CapsuleParams, ResponseParam);
+
+		// If encroached, cancel
+		if (bEncroached)
+		{
+			CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, OldUnscaledHalfHeight);
+			return;
+		}
+	}
+
+	if (bCrouchMaintainsBaseLocation)
+	{
+		// Intentionally not using MoveUpdatedComponent, where a horizontal plane constraint would prevent the base of the capsule from staying at the same spot.
+		UpdatedComponent->MoveComponent(FVector(0.f, 0.f, -ScaledHalfHeightAdjust), UpdatedComponent->GetComponentQuat(), true, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
+	}
+
+	bForceNextFloorCheck = true;
+
+	// OnStartCrouch takes the change from the Default size, not the current one (though they are usually the same).
+	ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	HalfHeightAdjust = (DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() - ClampedCrouchedHalfHeight);
+	ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+
+	AdjustProxyCapsuleSize();
+	SetMovementFlag((uint32)EGameplayAbility::Crouch, true);
+	CharacterOwner->OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
-// Proning
-
-bool UXyzBaseCharMovementComponent::CanProneInCurrentState() const
+void UXyzBaseCharMovementComponent::UnCrouch(bool bClientSimulation/* = false*/)
 {
-	return (IsFalling() || IsMovingOnGround()) && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics();
+	// Mostly copied from UCharacterMovementComponent excluding replication
+
+	if (!HasValidData())
+	{
+		return;
+	}
+
+	float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	// Height is not allowed to be smaller than radius.
+	float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+
+	// See if collision is not at crouching size or already at desired size.
+	if (OldUnscaledHalfHeight != ClampedCrouchedHalfHeight)
+	{
+		SetMovementFlag((uint32)EGameplayAbility::Crouch, false);
+		CharacterOwner->OnEndCrouch(0.f, 0.f);
+		return;
+	}
+
+	ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	float CurrentCrouchedHalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float HalfHeightAdjust = DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() - OldUnscaledHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	FVector PawnLocation = UpdatedComponent->GetComponentLocation();
+
+	check(CharacterOwner->GetCapsuleComponent());
+
+	// Try to stay in place and see if the larger capsule fits. We use a slightly taller capsule to avoid penetration.
+	const UWorld* MyWorld = GetWorld();
+	float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
+	FCollisionResponseParams ResponseParam;
+	InitCollisionParams(CapsuleParams, ResponseParam);
+
+	// Compensate for the difference between current capsule size and standing size
+	FCollisionShape StandingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust); // Shrink by negative amount, so actually grow it.
+	ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	bool bEncroached = true;
+
+	if (!bCrouchMaintainsBaseLocation)
+	{
+		// Expand in place
+		bEncroached = MyWorld->OverlapBlockingTestByChannel(PawnLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+
+		if (bEncroached)
+		{
+			// Try adjusting capsule position to see if we can avoid encroachment.
+			if (ScaledHalfHeightAdjust > 0.f)
+			{
+				// Shrink to a short capsule, sweep down to base to find where that would hit something, and then try to stand up from there.
+				float PawnRadius, PawnHalfHeight;
+				CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(PawnRadius, PawnHalfHeight);
+				float ShrinkHalfHeight = PawnHalfHeight - PawnRadius;
+				float TraceDist = PawnHalfHeight - ShrinkHalfHeight;
+				FVector Down = FVector(0.f, 0.f, -TraceDist);
+
+				FHitResult Hit(1.f);
+				FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, ShrinkHalfHeight);
+				bool bBlockingHit = MyWorld->SweepSingleByChannel(Hit, PawnLocation, PawnLocation + Down, FQuat::Identity, CollisionChannel, ShortCapsuleShape, CapsuleParams);
+				if (Hit.bStartPenetrating)
+				{
+					bEncroached = true;
+				}
+				else
+				{
+					// Compute where the base of the sweep ended up, and see if we can stand there
+					float DistanceToBase = (Hit.Time * TraceDist) + ShortCapsuleShape.Capsule.HalfHeight;
+					FVector NewLoc = FVector(PawnLocation.X, PawnLocation.Y, PawnLocation.Z - DistanceToBase + StandingCapsuleShape.Capsule.HalfHeight + SweepInflation + MIN_FLOOR_DIST / 2.f);
+					bEncroached = MyWorld->OverlapBlockingTestByChannel(NewLoc, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+					if (!bEncroached)
+					{
+						// Intentionally not using MoveUpdatedComponent, where a horizontal plane constraint would prevent the base of the capsule from staying at the same spot.
+						UpdatedComponent->MoveComponent(NewLoc - PawnLocation, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		// Expand while keeping base location the same.
+		FVector StandingLocation = PawnLocation + FVector(0.f, 0.f, StandingCapsuleShape.GetCapsuleHalfHeight() - CurrentCrouchedHalfHeight);
+		bEncroached = MyWorld->OverlapBlockingTestByChannel(StandingLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+
+		if (bEncroached)
+		{
+			if (IsMovingOnGround())
+			{
+				// Something might be just barely overhead, try moving down closer to the floor to avoid it.
+				float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
+				if (CurrentFloor.bBlockingHit && CurrentFloor.FloorDist > MinFloorDist)
+				{
+					StandingLocation.Z -= CurrentFloor.FloorDist - MinFloorDist;
+					bEncroached = MyWorld->OverlapBlockingTestByChannel(StandingLocation, FQuat::Identity, CollisionChannel, StandingCapsuleShape, CapsuleParams, ResponseParam);
+				}
+			}
+		}
+
+		if (!bEncroached)
+		{
+			// Commit the change in location.
+			UpdatedComponent->MoveComponent(StandingLocation - PawnLocation, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
+			bForceNextFloorCheck = true;
+		}
+	}
+
+	// If still encroached then abort.
+	if (bEncroached)
+	{
+		return;
+	}
+
+	// Now call SetCapsuleSize() to cause touch/untouch events and actually grow the capsule
+	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), true);
+
+	AdjustProxyCapsuleSize();
+	SetMovementFlag((uint32)EGameplayAbility::Crouch, false);
+	CharacterOwner->OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+}
+
+bool UXyzBaseCharMovementComponent::CanUnProne() const
+{
+	if (!HasValidData())
+	{
+		return false;
+	}
+
+	bool Result = false;
+
+	// Same overlap test as in UCharacterMovementComponent::UnProne
+	check(BaseCharacterOwner->GetCapsuleComponent());
+	float OldUnscaledRadius = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	float ClampedCrouchHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+	float CurrentProneHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float ComponentScale = BaseCharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float OldUnscaledHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float HalfHeightAdjust = ClampedCrouchHalfHeight - OldUnscaledHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	FVector PawnLocation = UpdatedComponent->GetComponentLocation();
+	const UWorld* MyWorld = GetWorld();
+	float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(ProneTrace), false, BaseCharacterOwner);
+	FCollisionResponseParams ResponseParam;
+	InitCollisionParams(CapsuleParams, ResponseParam);
+	FCollisionShape CrouchingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust);
+	ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	FVector CrouchingLocation = PawnLocation + (CrouchingCapsuleShape.GetCapsuleHalfHeight() - CurrentProneHalfHeight) * FVector::UpVector;
+
+	Result = !MyWorld->OverlapBlockingTestByChannel(CrouchingLocation, FQuat::Identity, CollisionChannel, CrouchingCapsuleShape, CapsuleParams, ResponseParam);
+	if (!Result)
+	{
+		if (IsMovingOnGround())
+		{
+			float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
+			if (CurrentFloor.bBlockingHit && CurrentFloor.FloorDist > MinFloorDist)
+			{
+				CrouchingLocation.Z -= CurrentFloor.FloorDist - MinFloorDist;
+				Result = !MyWorld->OverlapBlockingTestByChannel(CrouchingLocation, FQuat::Identity, CollisionChannel, CrouchingCapsuleShape, CapsuleParams, ResponseParam);
+			}
+		}
+	}
+
+	return Result;
 }
 
 void UXyzBaseCharMovementComponent::Prone()
 {
-	if (!CanProneInCurrentState() || BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == ProneCapsuleHalfHeight)
+	if (!HasValidData())
 	{
 		return;
 	}
 
-	const float ComponentScale = BaseCharacter->GetCapsuleComponent()->GetShapeScale();
-	const float OldUnscaledHalfHeight = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	const float OldUnscaledRadius = ProneCapsuleRadius;
-	const float ClampedProneHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, ProneCapsuleHalfHeight);
-	BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedProneHalfHeight);
-	const float HalfHeightAdjust = OldUnscaledHalfHeight - ClampedProneHalfHeight;
-	const float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	float OldUnscaledHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	// Height is not allowed to be smaller than radius.
+	float ClampedProneHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, ProneCapsuleHalfHeight);
+
+	if (OldUnscaledHalfHeight == ClampedProneHalfHeight)
+	{
+		return;
+	}
+
+	float ComponentScale = BaseCharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedProneHalfHeight);
+	float HalfHeightAdjust = OldUnscaledHalfHeight - ClampedProneHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 
 	UpdatedComponent->MoveComponent(FVector(0.f, 0.f, -ScaledHalfHeightAdjust), UpdatedComponent->GetComponentQuat(), true, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
-
-	bIsProne = true;
-
 	bForceNextFloorCheck = true;
 
-	BaseCharacter->OnStartProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	SetMovementFlag((uint32)EGameplayAbility::Prone, true);
+	BaseCharacterOwner->OnStartProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
-void UXyzBaseCharMovementComponent::UnProne()
+bool UXyzBaseCharMovementComponent::UnProne()
 {
-	if (!HasValidData() || !BaseCharacter->CanUnProne())
+	if (!HasValidData())
 	{
-		return;
+		return false;
 	}
 
-	ACharacter* DefaultCharacter = BaseCharacter->GetClass()->GetDefaultObject<ACharacter>();
+	ACharacter* DefaultCharacter = BaseCharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	float OldUnscaledHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	float OldUnscaledRadius = BaseCharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	// Height is not allowed to be smaller than radius.
+	float ClampedProneHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, ProneCapsuleHalfHeight);
 
-	const float OldUnscaledRadius = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
-	const float ClampedCrouchHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
-
-	if (BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == ClampedCrouchHalfHeight)
+	// See if collision is not at prone size or already at desired size.
+	if (OldUnscaledHalfHeight != ClampedProneHalfHeight)
 	{
-		bIsProne = false;
-		BaseCharacter->OnEndProne(0.f, 0.f);
-		return;
+		BaseCharacterOwner->OnStopProne(0.f, 0.f);
+		SetMovementFlag((uint32)EGameplayAbility::Prone, false);
+		return true;
 	}
 
-	const float CurrentProneHalfHeight = BaseCharacter->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float CurrentProneHalfHeight = BaseCharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	float ComponentScale = BaseCharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	float ClampedCrouchHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, CrouchedHalfHeight);
+	float HalfHeightAdjust = ClampedCrouchHalfHeight - OldUnscaledHalfHeight;
+	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
+	FVector PawnLocation = UpdatedComponent->GetComponentLocation();
 
-	const float ComponentScale = BaseCharacter->GetCapsuleComponent()->GetShapeScale();
-	const float OldUnscaledHalfHeight = BaseCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	const float HalfHeightAdjust = ClampedCrouchHalfHeight - OldUnscaledHalfHeight;
-	const float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
-	const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
-
-	check(BaseCharacter->GetCapsuleComponent());
+	check(BaseCharacterOwner->GetCapsuleComponent());
 
 	const UWorld* MyWorld = GetWorld();
-	const float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
-	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(ProneTrace), false, BaseCharacter);
+	float SweepInflation = KINDA_SMALL_NUMBER * 10.f;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(ProneTrace), false, BaseCharacterOwner);
 	FCollisionResponseParams ResponseParam;
 	InitCollisionParams(CapsuleParams, ResponseParam);
 
-	const FCollisionShape CrouchingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust);
-	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	FCollisionShape CrouchingCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_HeightCustom, -SweepInflation - ScaledHalfHeightAdjust);
+	ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
 	bool bEncroached = true;
 
 	FVector CrouchingLocation = PawnLocation + (CrouchingCapsuleShape.GetCapsuleHalfHeight() - CurrentProneHalfHeight) * FVector::UpVector;
@@ -644,7 +978,7 @@ void UXyzBaseCharMovementComponent::UnProne()
 	{
 		if (IsMovingOnGround())
 		{
-			const float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
+			float MinFloorDist = KINDA_SMALL_NUMBER * 10.f;
 			if (CurrentFloor.bBlockingHit && CurrentFloor.FloorDist > MinFloorDist)
 			{
 				CrouchingLocation.Z -= CurrentFloor.FloorDist - MinFloorDist;
@@ -655,19 +989,22 @@ void UXyzBaseCharMovementComponent::UnProne()
 
 	if (bEncroached)
 	{
-		return;
+		return false;
 	}
 
 	UpdatedComponent->MoveComponent(CrouchingLocation - PawnLocation, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
 	bForceNextFloorCheck = true;
-	bIsProne = false;
 
-	BaseCharacter->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), ClampedCrouchHalfHeight, true);
+	BaseCharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), ClampedCrouchHalfHeight, true);
 	AdjustProxyCapsuleSize();
-	BaseCharacter->OnEndProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
-}
+	SetMovementFlag((uint32)EGameplayAbility::Prone, false);
+	BaseCharacterOwner->OnStopProne(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
-// Mantling
+	return true;
+}
+#pragma endregion
+
+#pragma region MANTLING
 
 bool UXyzBaseCharMovementComponent::IsMantling() const
 {
@@ -676,38 +1013,49 @@ bool UXyzBaseCharMovementComponent::IsMantling() const
 
 void UXyzBaseCharMovementComponent::StartMantle(const FMantlingMovementParameters& MantlingParameters)
 {
-	BaseCharacter->SetActorEnableCollision(false);
+	BaseCharacterOwner->SetActorEnableCollision(false);
 	CurrentMantlingParameters = MantlingParameters;
-	OffsetFromMantlingTarget = CurrentMantlingParameters.TargetLocation - CurrentMantlingParameters.TargetActor->GetComponentLocation();
-	SetMovementMode(EMovementMode::MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Mantling);
+	if (IsValid(CurrentMantlingParameters.TargetActor))
+	{
+		OffsetFromMantlingTarget = CurrentMantlingParameters.TargetLocation - CurrentMantlingParameters.TargetActor->GetComponentLocation();
+		SetMovementMode(EMovementMode::MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Mantling);
+		GetWorld()->GetTimerManager().SetTimer(MantlingTimer, this, &UXyzBaseCharMovementComponent::StopMantle, CurrentMantlingParameters.Duration, false);
+	}
 }
 
-void UXyzBaseCharMovementComponent::EndMantle()
+void UXyzBaseCharMovementComponent::StopMantle()
 {
-	BaseCharacter->SetActorEnableCollision(true);
+	BaseCharacterOwner->SetActorEnableCollision(true);
+	BaseCharacterOwner->StopMantle();
 	SetMovementMode(MOVE_Walking);
 }
 
 void UXyzBaseCharMovementComponent::PhysMantling(float DeltaTime, int32 Iterations)
 {
-	const float ElapsedTime = GetWorld()->GetTimerManager().GetTimerElapsed(MantlingTimer) + CurrentMantlingParameters.StartTime;
-	const FVector MantlingCurveValue = CurrentMantlingParameters.MantlingCurve->GetVectorValue(ElapsedTime);
-	const float PositionAlpha = MantlingCurveValue.X;
-	const float XYCorrectionAlpha = MantlingCurveValue.Y;
-	const float ZCorrectionAlpha = MantlingCurveValue.Z;
+	if (!IsValid(CurrentMantlingParameters.TargetActor) || !CurrentMantlingParameters.MantlingCurve)
+	{
+		return;
+	}
+
+	float ElapsedTime = GetWorld()->GetTimerManager().GetTimerElapsed(MantlingTimer) + CurrentMantlingParameters.StartTime;
+	FVector MantlingCurveValue = CurrentMantlingParameters.MantlingCurve->GetVectorValue(ElapsedTime);
+	float PositionAlpha = MantlingCurveValue.X;
+	float XYCorrectionAlpha = MantlingCurveValue.Y;
+	float ZCorrectionAlpha = MantlingCurveValue.Z;
 	FVector CorrectedInitialLocation = FMath::Lerp(CurrentMantlingParameters.InitialLocation, CurrentMantlingParameters.InitialAnimationLocation, XYCorrectionAlpha);
 	CorrectedInitialLocation.Z = FMath::Lerp(CurrentMantlingParameters.InitialLocation.Z, CurrentMantlingParameters.InitialAnimationLocation.Z, ZCorrectionAlpha);
-	const FVector CurrentTargetActorLocation = CurrentMantlingParameters.TargetActor->GetComponentLocation();
-	const FVector NewLocation = FMath::Lerp(CorrectedInitialLocation, CurrentTargetActorLocation + OffsetFromMantlingTarget, PositionAlpha);
-	const FRotator NewRotation = FMath::Lerp(CurrentMantlingParameters.InitialRotation, CurrentMantlingParameters.TargetRotation, PositionAlpha);
-	const FVector Delta = NewLocation - GetActorLocation();
+	FVector CurrentTargetActorLocation = CurrentMantlingParameters.TargetActor->GetComponentLocation();
+	FVector NewLocation = FMath::Lerp(CorrectedInitialLocation, CurrentTargetActorLocation + OffsetFromMantlingTarget, PositionAlpha);
+	FRotator NewRotation = FMath::Lerp(CurrentMantlingParameters.InitialRotation, CurrentMantlingParameters.TargetRotation, PositionAlpha);
+	FVector Delta = NewLocation - GetActorLocation();
 	FHitResult Hit;
 
 	Velocity = Delta / DeltaTime;
 	SafeMoveUpdatedComponent(Delta, NewRotation, false, Hit);
 }
+#pragma endregion
 
-// Interactive Actors / Ladder
+#pragma region LADDER
 
 bool UXyzBaseCharMovementComponent::IsOnLadder() const
 {
@@ -716,206 +1064,291 @@ bool UXyzBaseCharMovementComponent::IsOnLadder() const
 
 bool UXyzBaseCharMovementComponent::IsOnTopOfCurrentLadder() const
 {
-	if (CurrentLadder.IsValid())
+	ALadder* Ladder = CurrentLadder.Get();
+	if (IsValid(Ladder))
 	{
-		return CurrentLadder->IsOnTop();
+		return Ladder->IsOnTop();
 	}
 	return false;
 }
 
-float UXyzBaseCharMovementComponent::GetCharacterProjectionToCurrentLadder(const FVector Location) const
+float UXyzBaseCharMovementComponent::GetLadderSpeedRatio() const
 {
-	if (CurrentLadder.IsValid())
+	ALadder* Ladder = CurrentLadder.Get();
+	if (IsValid(Ladder))
 	{
-		const FVector LadderToCharacterVector = Location - CurrentLadder->GetActorLocation();
-		return FVector::DotProduct(CurrentLadder->GetActorUpVector(), LadderToCharacterVector);
+		return FVector::DotProduct(Ladder->GetActorUpVector(), Velocity) / ClimbingOnLadderMaxSpeed;
+	}
+	return 1.f;
+}
+
+void UXyzBaseCharMovementComponent::AttachCharacterToLadder(ALadder* Ladder)
+{
+	if (!IsValid(Ladder))
+	{
+		return;
+	}
+
+	CurrentLadder = Ladder;
+	FVector DepthOffset = Ladder->GetActorForwardVector() * CharacterOffsetFromLadder;
+	FVector ProjectionToLadder = GetCharacterProjectionToCurrentLadder(GetActorLocation()) * Ladder->GetActorUpVector();
+	FVector StartLocation = Ladder->GetActorLocation() + ProjectionToLadder + DepthOffset;
+	FRotator StartRotation = Ladder->GetActorForwardVector().ToOrientationRotator();
+	StartRotation.Yaw += 180.f;
+
+	if (Ladder->IsOnTop())
+	{
+		StartLocation = Ladder->GetAttachFromTopAnimMontageStartLocation();
+	}
+
+	BaseCharacterOwner->SetActorLocation(StartLocation);
+	BaseCharacterOwner->SetActorRotation(StartRotation);
+
+	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Ladder);
+}
+
+void UXyzBaseCharMovementComponent::DetachCharacterFromLadder(EDetachFromLadderMethod DetachFromLadderMethod /*= EDetachFromLadderMethod::Fall*/)
+{
+	switch (DetachFromLadderMethod)
+	{
+		case EDetachFromLadderMethod::JumpOff:
+			{
+				ALadder* Ladder = CurrentLadder.Get();
+				if (IsValid(Ladder))
+				{
+					FVector JumpDirection = Ladder->GetActorForwardVector();
+					FVector JumpVelocity = JumpDirection * JumpOffLadderSpeed;
+					ForceTargetRotation = JumpDirection.ToOrientationRotator();
+					bForceRotation = true;
+
+					Launch(JumpVelocity);
+				}
+
+				SetMovementMode(MOVE_Falling);
+				break;
+			}
+		case EDetachFromLadderMethod::ReachingTheTop:
+			{
+				BaseCharacterOwner->StartMantle();
+				break;
+			}
+		case EDetachFromLadderMethod::ReachingTheBottom:
+			{
+				SetMovementMode(MOVE_Walking);
+				break;
+			}
+		case EDetachFromLadderMethod::Fall:
+		default:
+			{
+				SetMovementMode(MOVE_Falling);
+				break;
+			}
+	}
+
+	CurrentLadder.Reset();
+	BaseCharacterOwner->StopUseEnvironmentActor();
+}
+
+float UXyzBaseCharMovementComponent::GetCharacterProjectionToCurrentLadder(FVector Location) const
+{
+	ALadder* Ladder = CurrentLadder.Get();
+	if (IsValid(Ladder))
+	{
+		FVector LadderToCharacterVector = Location - Ladder->GetActorLocation();
+		return FVector::DotProduct(Ladder->GetActorUpVector(), LadderToCharacterVector);
 	}
 
 	return 0.f;
 }
 
-void UXyzBaseCharMovementComponent::AttachCharacterToLadder(ALadder* Ladder)
+void UXyzBaseCharMovementComponent::PhysLadder(float DeltaTime, int32 Iterations)
 {
-	CurrentLadder = Ladder;
-	const FVector DepthOffset = CurrentLadder.Get()->GetActorForwardVector() * CharacterOffsetFromLadder;
-	const FVector ProjectionToLadder = GetCharacterProjectionToCurrentLadder(GetActorLocation()) * CurrentLadder->GetActorUpVector();
-	FVector StartLocation = CurrentLadder->GetActorLocation() + ProjectionToLadder + DepthOffset;
-	FRotator StartRotation = CurrentLadder->GetActorForwardVector().ToOrientationRotator();
-	StartRotation.Yaw += 180.f;
-
-	if (CurrentLadder->IsOnTop())
+	ALadder* Ladder = CurrentLadder.Get();
+	if (!IsValid(Ladder))
 	{
-		StartLocation = CurrentLadder->GetAttachFromTopAnimMontageStartLocation();
+		return;
 	}
 
-	BaseCharacter->SetActorLocation(StartLocation);
-	BaseCharacter->SetActorRotation(StartRotation);
-
-	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Ladder);
-}
-
-void UXyzBaseCharMovementComponent::DetachCharacterFromLadder(const EDetachFromLadderMethod DetachFromLadderMethod /*= EDetachFromLadderMethod::Fall*/)
-{
-	switch (DetachFromLadderMethod)
-	{
-	case EDetachFromLadderMethod::JumpOff:
-	{
-		const FVector JumpDirection = CurrentLadder->GetActorForwardVector();
-		SetMovementMode(MOVE_Falling);
-
-		const FVector JumpVelocity = JumpDirection * JumpOffLadderSpeed;
-
-		ForceTargetRotation = JumpDirection.ToOrientationRotator();
-		bForceRotation = true;
-
-		Launch(JumpVelocity);
-		break;
-	}
-	case EDetachFromLadderMethod::ReachingTheTop:
-	{
-		BaseCharacter->Mantle(true);
-		break;
-	}
-	case EDetachFromLadderMethod::ReachingTheBottom:
-	{
-		SetMovementMode(MOVE_Walking);
-		break;
-	}
-	case EDetachFromLadderMethod::Fall:
-	default:
-	{
-		SetMovementMode(MOVE_Falling);
-		break;
-	}
-	}
-}
-
-float UXyzBaseCharMovementComponent::GetLadderSpeedRatio() const
-{
-	if (CurrentLadder.IsValid())
-	{
-		return FVector::DotProduct(CurrentLadder->GetActorUpVector(), Velocity) / ClimbingOnLadderMaxSpeed;
-	}
-	return 1.f;
-}
-
-void UXyzBaseCharMovementComponent::PhysLadder(const float DeltaTime, int32 Iterations)
-{
 	CalcVelocity(DeltaTime, 1.f, false, ClimbingOnLadderBrakingDeceleration);
-	const FVector Delta = Velocity * DeltaTime;
+	FVector Delta = Velocity * DeltaTime;
 
 	if (HasAnimRootMotion())
 	{
 		FHitResult Hit;
-		SafeMoveUpdatedComponent(Delta, BaseCharacter->GetActorRotation(), false, Hit);
+		SafeMoveUpdatedComponent(Delta, BaseCharacterOwner->GetActorRotation(), false, Hit);
 		return;
 	}
 
-	const FVector NextPosition = GetActorLocation() + Delta;
-	const float NextPositionProjection = GetCharacterProjectionToCurrentLadder(NextPosition);
+	FVector NextPosition = GetActorLocation() + Delta;
+	float NextPositionProjection = GetCharacterProjectionToCurrentLadder(NextPosition);
 
 	if (NextPositionProjection < DetachmentDistanceFromBottom)
 	{
 		DetachCharacterFromLadder(EDetachFromLadderMethod::ReachingTheBottom);
 		return;
 	}
-	if (NextPositionProjection > (CurrentLadder->GetLadderHeight() - DetachmentDistanceFromTop))
+	if (NextPositionProjection > (Ladder->GetLadderHeight() - DetachmentDistanceFromTop))
 	{
 		DetachCharacterFromLadder(EDetachFromLadderMethod::ReachingTheTop);
 		return;
 	}
 
 	FHitResult Hit;
-	SafeMoveUpdatedComponent(Delta, BaseCharacter->GetActorRotation(), true, Hit);
+	SafeMoveUpdatedComponent(Delta, BaseCharacterOwner->GetActorRotation(), true, Hit);
 }
+#pragma endregion
 
-// Interactive Actors / Zipline
+#pragma region ZIPLINE
 
 bool UXyzBaseCharMovementComponent::IsOnZipline() const
 {
 	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_Zipline && UpdatedComponent;
 }
 
-bool UXyzBaseCharMovementComponent::IsWallRunning() const
+void UXyzBaseCharMovementComponent::AttachCharacterToZipline(AZipline* Zipline)
 {
-	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_WallRun && UpdatedComponent;
+	if (!IsValid(Zipline))
+	{
+		return;
+	}
+	CurrentZipline = Zipline;
+	FRotator StartRotation = Zipline->GetZiplineSpanVector().ToOrientationRotator();
+	FVector StartLocation = Zipline->GetZiplineStartLocation() + StartRotation.RotateVector(ZiplineAttachmentOffset);
+
+	if (BaseCharacterOwner->GetActorLocation().Z < StartLocation.Z)
+	{
+		return;
+	}
+
+	BaseCharacterOwner->SetActorLocation(StartLocation);
+	BaseCharacterOwner->SetActorRotation(StartRotation);
+
+	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Zipline);
 }
 
-float UXyzBaseCharMovementComponent::GetCharacterProjectionToCurrentZipline(const FVector Location) const
+void UXyzBaseCharMovementComponent::DetachCharacterFromZipline(EDetachFromZiplineMethod DetachFromZiplineMethod)
 {
-	if (CurrentZipline.IsValid())
+	switch (DetachFromZiplineMethod)
 	{
-		const FVector ZiplineToCharacterVector = Location - CurrentZipline->GetZiplineStartLocation();
-		return FVector::DotProduct(CurrentZipline->GetZiplineSpanVector().GetSafeNormal(), ZiplineToCharacterVector);
+		case EDetachFromZiplineMethod::ReachingTheEnd:
+			{
+				AZipline* Zipline = CurrentZipline.Get();
+				if (IsValid(Zipline))
+				{
+					FVector ZiplineDirection = Zipline->GetZiplineSpanVector();
+					FVector JumpDirection = FVector(ZiplineDirection.X, ZiplineDirection.Y, 0.f).RotateAngleAxis(JumpOffZiplineAngle, FVector::UpVector).GetSafeNormal();
+					FVector JumpVelocity = JumpDirection * JumpOffZiplineSpeed;
+					ForceTargetRotation = JumpDirection.ToOrientationRotator();
+					bForceRotation = true;
 
+					Launch(JumpVelocity);
+				}
+
+				SetMovementMode(MOVE_Falling);
+				break;
+			}
+		case EDetachFromZiplineMethod::Fall:
+		default:
+			{
+				SetMovementMode(MOVE_Falling);
+				break;
+			}
+	}
+
+	CurrentZipline.Reset();
+	BaseCharacterOwner->StopUseEnvironmentActor();
+}
+
+float UXyzBaseCharMovementComponent::GetCharacterProjectionToCurrentZipline(FVector Location) const
+{
+	AZipline* Zipline = CurrentZipline.Get();
+	if (IsValid(Zipline))
+	{
+		FVector ZiplineToCharacterVector = Location - Zipline->GetZiplineStartLocation();
+		return FVector::DotProduct(Zipline->GetZiplineSpanVector().GetSafeNormal(), ZiplineToCharacterVector);
 	}
 
 	return 0.f;
 }
 
-void UXyzBaseCharMovementComponent::AttachCharacterToZipline(AZipline* Zipline)
+void UXyzBaseCharMovementComponent::PhysZipline(float DeltaTime, int32 Iterations)
 {
-	CurrentZipline = Zipline;
-	const FRotator StartRotation = CurrentZipline->GetZiplineSpanVector().ToOrientationRotator();
-	const FVector StartLocation = CurrentZipline->GetZiplineStartLocation() + StartRotation.RotateVector(ZiplineAttachmentOffset);
-
-	if (BaseCharacter->GetActorLocation().Z < StartLocation.Z)
+	AZipline* Zipline = CurrentZipline.Get();
+	if (!IsValid(Zipline))
 	{
 		return;
 	}
 
-	BaseCharacter->SetActorLocation(StartLocation);
-	BaseCharacter->SetActorRotation(StartRotation);
+	Velocity = GetMaxSpeed() * Zipline->GetZiplineSpanVector().GetSafeNormal();
+	FVector Delta = Velocity * DeltaTime;
 
-	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_Zipline);
-}
+	FVector NextPosition = GetActorLocation() + Delta;
+	float NextPositionProjection = GetCharacterProjectionToCurrentZipline(NextPosition);
 
-void UXyzBaseCharMovementComponent::DetachCharacterFromZipline(const EDetachFromZiplineMethod DetachFromZiplineMethod)
-{
-	switch (DetachFromZiplineMethod)
-	{
-	case EDetachFromZiplineMethod::ReachingTheEnd:
-	{
-		const FVector ZiplineDirection = CurrentZipline->GetZiplineSpanVector();
-		const FVector JumpDirection = FVector(ZiplineDirection.X, ZiplineDirection.Y, 0.f).RotateAngleAxis(JumpOffZiplineAngle, FVector::UpVector).GetSafeNormal();
-		SetMovementMode(MOVE_Falling);
-
-		const FVector JumpVelocity = JumpDirection * JumpOffZiplineSpeed;
-
-		ForceTargetRotation = JumpDirection.ToOrientationRotator();
-		bForceRotation = true;
-
-		Launch(JumpVelocity);
-		break;
-	}
-	case EDetachFromZiplineMethod::Fall:
-	default:
-	{
-		SetMovementMode(MOVE_Falling);
-		break;
-	}
-	}
-}
-
-void UXyzBaseCharMovementComponent::PhysZipline(const float DeltaTime, int32 Iterations)
-{
-	Velocity = GetMaxSpeed() * CurrentZipline->GetZiplineSpanVector().GetSafeNormal();
-	const FVector Delta = Velocity * DeltaTime;
-
-	const FVector NextPosition = GetActorLocation() + Delta;
-	const float NextPositionProjection = GetCharacterProjectionToCurrentZipline(NextPosition);
-
-	if (NextPositionProjection > CurrentZipline->GetZiplineLength() - ZiplineDetachmentDistanceFromEnd)
+	if (NextPositionProjection > Zipline->GetZiplineLength() - ZiplineDetachmentDistanceFromEnd)
 	{
 		DetachCharacterFromZipline(EDetachFromZiplineMethod::ReachingTheEnd);
 		return;
 	}
 
 	FHitResult Hit;
-	SafeMoveUpdatedComponent(Delta, BaseCharacter->GetActorRotation(), false, Hit);
+	SafeMoveUpdatedComponent(Delta, BaseCharacterOwner->GetActorRotation(), false, Hit);
+}
+#pragma endregion
+
+#pragma region WALL RUNNING
+
+bool UXyzBaseCharMovementComponent::IsWallRunning() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)ECustomMovementMode::CMOVE_WallRun && UpdatedComponent;
 }
 
-// Wall Running
+void UXyzBaseCharMovementComponent::StartWallRun(const FHitResult& Hit)
+{
+	if (!CanWallRunInCurrentState() || !IsSurfaceWallRunnable(Hit.ImpactNormal) || !AttachCharacterToRunnableWall(Hit))
+	{
+		return;
+	}
+
+	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_WallRun);
+	BaseCharacterOwner->OnWallRunStart();
+}
+
+void UXyzBaseCharMovementComponent::DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod DetachFromRunnableWallMethod /*= EDetachFromRunnableWallMethod::Fall*/)
+{
+	FRotator NewRotation = BaseCharacterOwner->GetActorRotation();
+	NewRotation.Roll = 0.f;
+	BaseCharacterOwner->SetActorRotation(NewRotation);
+
+	switch (DetachFromRunnableWallMethod)
+	{
+		case EDetachFromRunnableWallMethod::JumpOff:
+			{
+				FVector WallRunDirectionRightVector = FVector::CrossProduct(FVector::UpVector, CurrentWallRunDirection);
+				FVector JumpDirection = CurrentWallRunSide == EWallRunSide::Left ? WallRunDirectionRightVector : -WallRunDirectionRightVector;
+				JumpDirection += Velocity.GetSafeNormal();
+				SetMovementMode(MOVE_Falling);
+
+				FVector JumpVelocity = JumpDirection * JumpOffWallRunSpeed;
+
+				ForceTargetRotation = JumpDirection.ToOrientationRotator();
+				bForceRotation = true;
+				Launch(JumpVelocity);
+
+				bCanUseSameWallRunSide = true;
+				break;
+			}
+		case EDetachFromRunnableWallMethod::Fall:
+		default:
+			{
+				SetMovementMode(MOVE_Falling);
+				break;
+			}
+	}
+
+	WallRunElapsedTime = 0.f;
+	BaseCharacterOwner->OnWallRunEnd();
+}
 
 bool UXyzBaseCharMovementComponent::CanWallRunInCurrentState() const
 {
@@ -932,9 +1365,9 @@ bool UXyzBaseCharMovementComponent::IsSurfaceWallRunnable(const FVector& Surface
 	return true;
 }
 
-void UXyzBaseCharMovementComponent::GetWallRunSideAndDirection(const FVector HitNormal, EWallRunSide& OutSide, FVector& OutDirection) const
+void UXyzBaseCharMovementComponent::GetWallRunSideAndDirection(FVector HitNormal, EWallRunSide& OutSide, FVector& OutDirection) const
 {
-	if (FVector::DotProduct(HitNormal, BaseCharacter->GetActorRightVector()) > 0)
+	if (FVector::DotProduct(HitNormal, BaseCharacterOwner->GetActorRightVector()) > 0)
 	{
 		OutSide = EWallRunSide::Left;
 		OutDirection = FVector::CrossProduct(HitNormal, FVector::UpVector).GetSafeNormal();
@@ -946,19 +1379,20 @@ void UXyzBaseCharMovementComponent::GetWallRunSideAndDirection(const FVector Hit
 	}
 }
 
-void UXyzBaseCharMovementComponent::GetUpdatedWallRunDeltaAndRotation(const FHitResult& HitResult, FVector& DisplacementDelta, FRotator& UpdatedCharacterRotation)
+void UXyzBaseCharMovementComponent::GetUpdatedWallRunDeltaAndRotation(float DeltaTime, const FHitResult& HitResult, FVector& DisplacementDelta, FRotator& UpdatedCharacterRotation) const
 {
-	const float ElapsedTimeRatio = GetWorld()->GetTimerManager().GetTimerElapsed(WallRunTimer) / WallRunMaxDuration;
-	float CurveValue = 0.f;
-	if (IsValid(WallRunVerticalDisplacementCurve))
+	float OldCurveValue = 0.f;
+	float NewCurveValue = 0.f;
+	if (WallRunVerticalDisplacementCurve)
 	{
-		CurveValue = WallRunVerticalDisplacementCurve->GetFloatValue(ElapsedTimeRatio);
+		OldCurveValue = WallRunVerticalDisplacementCurve->GetFloatValue(WallRunElapsedTime / WallRunMaxDuration);
+		NewCurveValue = WallRunVerticalDisplacementCurve->GetFloatValue((WallRunElapsedTime + DeltaTime) / WallRunMaxDuration);
 	}
+
 	FVector WallUpVector;
 	float UpdatedAngleOffset;
 	FVector Axis;
 	float WallTilt;
-
 	if (CurrentWallRunSide == EWallRunSide::Left)
 	{
 		WallUpVector = FVector::CrossProduct(CurrentWallRunDirection, HitResult.ImpactNormal).GetSafeNormal();
@@ -974,34 +1408,9 @@ void UXyzBaseCharMovementComponent::GetUpdatedWallRunDeltaAndRotation(const FHit
 		UpdatedAngleOffset = -CharacterAngleOffsetFromWallPlane + WallTilt;
 	}
 
-	const FVector UpdatedDisplacement = WallRunMaxVerticalDisplacement * CurveValue * WallUpVector;
-	DisplacementDelta = UpdatedDisplacement - PreviousVerticalDisplacement;
-	PreviousVerticalDisplacement = UpdatedDisplacement;
-
+	DisplacementDelta = (NewCurveValue - OldCurveValue) * WallRunMaxVerticalDisplacement * WallUpVector;
 	UpdatedCharacterRotation = CurrentWallRunDirection.ToOrientationRotator();
 	UpdatedCharacterRotation.Roll += UpdatedAngleOffset;
-}
-
-void UXyzBaseCharMovementComponent::StartWallRun(const FHitResult& Hit)
-{
-	if (!CanWallRunInCurrentState() || !IsSurfaceWallRunnable(Hit.ImpactNormal) || !AttachCharacterToRunnableWall(Hit))
-	{
-		return;
-	}
-
-	GetWorld()->GetTimerManager().SetTimer(WallRunTimer, this, &UXyzBaseCharMovementComponent::EndWallRun, WallRunMaxDuration, false);
-	SetMovementMode(MOVE_Custom, (uint8)ECustomMovementMode::CMOVE_WallRun);
-	BaseCharacter->OnWallRunStart();
-}
-
-void UXyzBaseCharMovementComponent::EndWallRun()
-{
-	if (IsWallRunning())
-	{
-		SetPlaneConstraintNormal(FVector::ZeroVector);
-		DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod::Fall);
-		GetWorld()->GetTimerManager().ClearTimer(WallRunTimer);;
-	}
 }
 
 bool UXyzBaseCharMovementComponent::AttachCharacterToRunnableWall(const FHitResult& Hit)
@@ -1016,60 +1425,32 @@ bool UXyzBaseCharMovementComponent::AttachCharacterToRunnableWall(const FHitResu
 
 	CurrentWallRunSide = Side;
 	CurrentWallRunDirection = Direction;
-
 	FVector UpdatedOffsetFromWallPlane = CharacterOffsetFromWallPlane;
 	UpdatedOffsetFromWallPlane.Y = CurrentWallRunSide == EWallRunSide::Left ? UpdatedOffsetFromWallPlane.Y : -UpdatedOffsetFromWallPlane.Y;
 	WallRunStartLocation = Hit.ImpactPoint + CurrentWallRunDirection.ToOrientationRotator().RotateVector(UpdatedOffsetFromWallPlane);
-	BaseCharacter->SetActorLocation(WallRunStartLocation);
-
-	PreviousVerticalDisplacement = FVector::ZeroVector;
+	BaseCharacterOwner->SetActorLocation(WallRunStartLocation);
 	SetPlaneConstraintNormal(FVector::UpVector);
 
 	return true;
 }
 
-void UXyzBaseCharMovementComponent::DetachCharacterFromRunnableWall(const EDetachFromRunnableWallMethod DetachFromRunnableWallMethod /*= EDetachFromRunnableWallMethod::Fall*/)
+void UXyzBaseCharMovementComponent::EndWallRun()
 {
-	FRotator NewRotation = BaseCharacter->GetActorRotation();
-	NewRotation.Roll = 0.f;
-	BaseCharacter->SetActorRotation(NewRotation);
-
-	switch (DetachFromRunnableWallMethod)
+	if (IsWallRunning())
 	{
-	case EDetachFromRunnableWallMethod::JumpOff:
-	{
-		const FVector WallRunDirectionRightVector = FVector::CrossProduct(FVector::UpVector, CurrentWallRunDirection);
-		FVector JumpDirection = CurrentWallRunSide == EWallRunSide::Left ? WallRunDirectionRightVector : -WallRunDirectionRightVector;
-		JumpDirection += Velocity.GetSafeNormal();
-		SetMovementMode(MOVE_Falling);
-
-		const FVector JumpVelocity = JumpDirection * JumpOffWallRunSpeed;
-
-		ForceTargetRotation = JumpDirection.ToOrientationRotator();
-		bForceRotation = true;
-		Launch(JumpVelocity);
-
-		bCanUseSameWallRunSide = true;
-		break;
+		SetPlaneConstraintNormal(FVector::ZeroVector);
+		DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod::Fall);
 	}
-	case EDetachFromRunnableWallMethod::Fall:
-	default:
-	{
-		SetMovementMode(MOVE_Falling);
-		break;
-	}
-	}
-
-	BaseCharacter->OnWallRunEnd();
 }
 
 bool UXyzBaseCharMovementComponent::UpdateWallRunVelocity(FHitResult& HitResult)
 {
-	const FVector StartPosition = BaseCharacter->GetActorLocation();
-	FVector RightVector = BaseCharacter->GetActorRightVector();
+	FVector StartPosition = BaseCharacterOwner->GetActorLocation();
+	FVector RightVector = BaseCharacterOwner->GetActorRightVector();
 	RightVector.Z = 0.f;
-	const FVector LineTraceDirection = CurrentWallRunSide == EWallRunSide::Right ? RightVector.GetSafeNormal() : -RightVector.GetSafeNormal();
-	const FVector EndPosition = StartPosition + WallRunLineTraceLength * LineTraceDirection;
+	FVector LineTraceDirection = CurrentWallRunSide == EWallRunSide::Right ? RightVector.GetSafeNormal() : -RightVector.GetSafeNormal();
+	LineTraceDirection += BaseCharacterOwner->GetActorForwardVector() * .2f; // line trace a bit ahead of the character ensuring that it won't go around corners due to rotation interpolation
+	FVector EndPosition = StartPosition + WallRunLineTraceLength * LineTraceDirection.GetSafeNormal();
 
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, StartPosition, EndPosition, ECC_WallRunning, FCollisionQueryParams::DefaultQueryParam))
 	{
@@ -1094,7 +1475,7 @@ bool UXyzBaseCharMovementComponent::UpdateWallRunVelocity(FHitResult& HitResult)
 	return true;
 }
 
-void UXyzBaseCharMovementComponent::PhysWallRun(const float DeltaTime, int32 Iterations)
+void UXyzBaseCharMovementComponent::PhysWallRun(float DeltaTime, int32 Iterations)
 {
 	FHitResult HitResult;
 	if (!UpdateWallRunVelocity(HitResult))
@@ -1102,114 +1483,18 @@ void UXyzBaseCharMovementComponent::PhysWallRun(const float DeltaTime, int32 Ite
 		return;
 	}
 
-	const FVector Delta = Velocity * DeltaTime;
-
 	FVector DisplacementDelta;
 	FRotator UpdatedCharacterRotation;
-	GetUpdatedWallRunDeltaAndRotation(HitResult, DisplacementDelta, UpdatedCharacterRotation);
+	GetUpdatedWallRunDeltaAndRotation(DeltaTime, HitResult, DisplacementDelta, UpdatedCharacterRotation);
 	UpdatedCharacterRotation = FMath::RInterpTo(GetLastUpdateRotation(), UpdatedCharacterRotation, DeltaTime, WallRunRotationInterpSpeed);
 
 	FHitResult Hit;
-	SafeMoveUpdatedComponent(Delta + DisplacementDelta, UpdatedCharacterRotation, false, Hit);
-}
+	SafeMoveUpdatedComponent(Velocity * DeltaTime + DisplacementDelta, UpdatedCharacterRotation, false, Hit);
 
-void FSavedMove_XyzCharacter::Clear()
-{
-	Super::Clear();
-
-	bSavedIsSprinting = 0;
-	bSavedIsMantling = 0;
-	bSavedIsPressingSlide = 0;
-}
-
-void FSavedMove_XyzCharacter::SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel,
-	FNetworkPredictionData_Client_Character& ClientData)
-{
-	Super::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
-
-	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::SetMoveFor: AXyzBaseCharacter should be used."))
-		const AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
-
-	const UXyzBaseCharMovementComponent* BaseCharacterMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
-	bSavedIsSprinting = BaseCharacterMovementComponent->bIsSprinting;
-	bSavedIsMantling = BaseCharacterMovementComponent->IsMantling();
-	bSavedIsPressingSlide = BaseCharacterMovementComponent->bIsSliding;
-}
-
-bool FSavedMove_XyzCharacter::CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* InCharacter,
-	float MaxDelta) const
-{
-	const FSavedMove_XyzCharacter* NewMove = StaticCast<FSavedMove_XyzCharacter*>(NewMovePtr.Get());
-
-	if (NewMove->bSavedIsSprinting != bSavedIsSprinting || NewMove->bSavedIsMantling != bSavedIsMantling || NewMove->bSavedIsPressingSlide != bSavedIsPressingSlide)
+	WallRunElapsedTime += DeltaTime;
+	if (WallRunElapsedTime >= WallRunMaxDuration)
 	{
-		return false;
-	}
-
-	return Super::CanCombineWith(NewMovePtr, InCharacter, MaxDelta);
-}
-
-void FSavedMove_XyzCharacter::PrepMoveFor(ACharacter* Character)
-{
-	Super::PrepMoveFor(Character);
-
-	checkf(Character->IsA<AXyzBaseCharacter>(), TEXT("FSavedMove_XyzCharacter::PrepMoveFor: AXyzBaseCharacter should be used."))
-		AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(Character);
-
-	UXyzBaseCharMovementComponent* BaseCharacterMovementComponent = BaseCharacter->GetBaseCharacterMovementComponent();
-
-	if (bSavedIsSprinting)
-	{
-		BaseCharacterMovementComponent->StartSprint();
-	}
-	else
-	{
-		BaseCharacterMovementComponent->StopSprint();
-	}
-
-	if (bSavedIsPressingSlide)
-	{
-		BaseCharacterMovementComponent->StartSlide();
+		EndWallRun();
 	}
 }
-
-uint8 FSavedMove_XyzCharacter::GetCompressedFlags() const
-{
-	//  FLAG_JumpPressed = 0x01,	// Jump pressed
-	//	FLAG_WantsToCrouch = 0x02,	// Wants to crouch
-	//	FLAG_Reserved_1 = 0x04,	// Reserved for future use
-	//	FLAG_Reserved_2 = 0x08,	// Reserved for future use
-	//	// Remaining bit masks are available for custom flags.
-	//	FLAG_Custom_0 = 0x10, // Sprinting
-	//	FLAG_Custom_1 = 0x20, // Mantling
-	//	FLAG_Custom_2 = 0x40, // PressingSlide
-	//	FLAG_Custom_3 = 0x80,
-
-	uint8 Result = Super::GetCompressedFlags();
-
-	if (bSavedIsSprinting)
-	{
-		Result |= FLAG_Custom_0;
-	}
-	if (bSavedIsMantling)
-	{
-		Result &= ~FLAG_JumpPressed;
-		Result |= FLAG_Custom_1;
-	}
-	if (bSavedIsPressingSlide)
-	{
-		Result |= FLAG_Custom_2;
-	}
-
-	return Result;
-}
-
-FNetworkPredictionData_Client_XyzCharacter::FNetworkPredictionData_Client_XyzCharacter(const UCharacterMovementComponent& ClientMovement)
-	: Super(ClientMovement)
-{
-}
-
-FSavedMovePtr FNetworkPredictionData_Client_XyzCharacter::AllocateNewMove()
-{
-	return FSavedMovePtr(new FSavedMove_XyzCharacter());
-}
+#pragma endregion

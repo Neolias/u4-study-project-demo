@@ -17,8 +17,7 @@ class XYZHOMEWORK_API AXyzAIController : public AAIController
 
 public:
 	AXyzAIController();
-
-	virtual AActor* GetClosestSensedActor(const TSubclassOf<class UAISense> SenseClass, const FAISenseAffiliationFilter& AffiliationFilter) const;
+	virtual AActor* GetClosestSensedActor(TSubclassOf<class UAISense> SenseClass, const FAISenseAffiliationFilter& AffiliationFilter) const;
 
 protected:
 	UFUNCTION()

@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Actors/Platforms/PlatformTrigger.h"
 
 #include "BasePlatform.h"
@@ -11,7 +10,7 @@ APlatformTrigger::APlatformTrigger()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	SetReplicates(true);
+	bReplicates = true;
 	NetUpdateFrequency = 2.f;
 	MinNetUpdateFrequency = 2.f;
 
@@ -25,24 +24,24 @@ APlatformTrigger::APlatformTrigger()
 	TriggerCollision->SetupAttachment(TriggerRoot);
 }
 
-void APlatformTrigger::BeginPlay()
-{
-	Super::BeginPlay();
-
-	TriggerCollision->OnComponentBeginOverlap.AddDynamic(this, &APlatformTrigger::RegisterPawns);
-	TriggerCollision->OnComponentEndOverlap.AddDynamic(this, &APlatformTrigger::UnRegisterPawns);
-}
-
 void APlatformTrigger::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(APlatformTrigger, bIsTriggered);
 }
 
-void APlatformTrigger::SetIsTriggered(const bool bIsTriggered_In)
+void APlatformTrigger::SetIsTriggered(bool bIsTriggered_In)
 {
 	bIsTriggered = bIsTriggered_In;
 	OnSetIsTriggered();
+}
+
+void APlatformTrigger::BeginPlay()
+{
+	Super::BeginPlay();
+
+	TriggerCollision->OnComponentBeginOverlap.AddDynamic(this, &APlatformTrigger::RegisterPawns);
+	TriggerCollision->OnComponentEndOverlap.AddDynamic(this, &APlatformTrigger::UnRegisterPawns);
 }
 
 void APlatformTrigger::OnSetIsTriggered() const
@@ -70,22 +69,15 @@ void APlatformTrigger::OnSetIsTriggered() const
 	}
 }
 
-void APlatformTrigger::OnRep_SetIsTriggered(bool bIsTriggered_Old)
+void APlatformTrigger::RegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	OnSetIsTriggered();
-}
-
-void APlatformTrigger::RegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-	AXyzBaseCharacter* Character = Cast<AXyzBaseCharacter>(OtherActor);
-	if (!IsValid(Character))
+	AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(OtherActor);
+	if (!IsValid(BaseCharacter))
 	{
 		return;
 	}
 
-	OverlappedPawns.AddUnique(Character);
-
+	OverlappedPawns.AddUnique(BaseCharacter);
 	if (!bIsTriggered && OverlappedPawns.Num() > 0)
 	{
 		if (GetLocalRole() == ROLE_Authority)
@@ -97,14 +89,13 @@ void APlatformTrigger::RegisterPawns(UPrimitiveComponent* OverlappedComponent, A
 
 void APlatformTrigger::UnRegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	AXyzBaseCharacter* Character = Cast<AXyzBaseCharacter>(OtherActor);
-	if (!IsValid(Character))
+	AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(OtherActor);
+	if (!IsValid(BaseCharacter))
 	{
 		return;
 	}
 
-	OverlappedPawns.RemoveSingleSwap(Character);
-
+	OverlappedPawns.RemoveSingleSwap(BaseCharacter);
 	if (bIsTriggered && OverlappedPawns.Num() < 1)
 	{
 		if (GetLocalRole() == ROLE_Authority)
@@ -112,4 +103,9 @@ void APlatformTrigger::UnRegisterPawns(UPrimitiveComponent* OverlappedComponent,
 			SetIsTriggered(false);
 		}
 	}
+}
+
+void APlatformTrigger::OnRep_SetIsTriggered(bool bIsTriggered_Old)
+{
+	OnSetIsTriggered();
 }

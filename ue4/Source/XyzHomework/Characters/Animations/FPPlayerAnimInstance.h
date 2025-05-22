@@ -16,8 +16,7 @@ class XYZHOMEWORK_API UFPPlayerAnimInstance : public UXyzBaseCharacterAnimInstan
 
 public:
 	virtual void NativeBeginPlay() override;
-	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
-protected:
+private:
 	TWeakObjectPtr<class AFPPlayerCharacter> CachedFPCharacter;
 };

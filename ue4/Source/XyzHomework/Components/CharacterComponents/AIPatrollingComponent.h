@@ -7,7 +7,9 @@
 #include "Components/ActorComponent.h"
 #include "AIPatrollingComponent.generated.h"
 
-
+/**
+ *
+ */
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class XYZHOMEWORK_API UAIPatrollingComponent : public UActorComponent
 {
@@ -19,9 +21,9 @@ public:
 	bool GetNextWayPoint(OUT FVector& NextWayPoint);
 
 protected:
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Patrol Parameters")
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Patrol Component")
 	class APatrollingPath* PatrollingPath;
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Patrol Parameters")
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Patrol Component")
 	EPatrolMode PatrolMode = EPatrolMode::Circle;
 
 private:

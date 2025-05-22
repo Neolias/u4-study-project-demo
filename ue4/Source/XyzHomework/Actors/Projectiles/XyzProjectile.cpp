@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Actors/Projectiles/XyzProjectile.h"
 
 #include "Components/SphereComponent.h"
@@ -27,16 +26,9 @@ AXyzProjectile::AXyzProjectile()
 	ProjectileMovementComponent->Bounciness = Bounciness;
 	ProjectileMovementComponent->SetAutoActivate(false);
 
-	SetReplicates(true);
+	bReplicates = true;
 	SetReplicateMovement(true);
 	SetProjectileActive(false);
-}
-
-void AXyzProjectile::BeginPlay()
-{
-	Super::BeginPlay();
-
-	CollisionComponent->OnComponentHit.AddDynamic(this, &AXyzProjectile::OnCollisionComponentHit);
 }
 
 void AXyzProjectile::Tick(float DeltaSeconds)
@@ -44,7 +36,7 @@ void AXyzProjectile::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 }
 
-void AXyzProjectile::SetProjectileActive(const bool bIsActive)
+void AXyzProjectile::SetProjectileActive(bool bIsActive)
 {
 	ProjectileMovementComponent->SetActive(bIsActive);
 	SetActorTickEnabled(bIsActive);
@@ -52,7 +44,7 @@ void AXyzProjectile::SetProjectileActive(const bool bIsActive)
 	StaticMeshComponent->SetVisibility(bIsActive, true);
 }
 
-void AXyzProjectile::Launch(const FVector Direction, const FVector ProjectileResetLocation/* = FVector::ZeroVector*/)
+void AXyzProjectile::Launch(FVector Direction, FVector ProjectileResetLocation/* = FVector::ZeroVector*/)
 {
 	CollisionComponent->IgnoreActorWhenMoving(GetOwningPawn(), true);
 	ProjectileMovementComponent->MaxSpeed = MaxSpeed;
@@ -61,6 +53,13 @@ void AXyzProjectile::Launch(const FVector Direction, const FVector ProjectileRes
 	ResetLocation = ProjectileResetLocation;
 
 	OnProjectileLaunched();
+}
+
+void AXyzProjectile::BeginPlay()
+{
+	Super::BeginPlay();
+
+	CollisionComponent->OnComponentHit.AddDynamic(this, &AXyzProjectile::OnCollisionComponentHit);
 }
 
 APawn* AXyzProjectile::GetOwningPawn() const

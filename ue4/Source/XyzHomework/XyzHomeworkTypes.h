@@ -18,5 +18,15 @@ const FName DebugCategoryMeleeWeapon = FName("MeleeWeapon");
 
 const FName AICharacterBTCurrentTargetName = FName("CurrentTarget");
 const FName AICharacterBTNextLocationName = FName("NextLocation");
-const FName AICharacterBTCanSeeTargetName = FName("CanSeeTarget");
+const FName AICharacterBTCanSeeTargetName = FName("bCanSeeTarget");
 const FName AICharacterBTDistanceToTargetName = FName("DistanceToTarget");
+const FName AICharacterBTWeaponFireRequestedName = FName("bIsWeaponFireRequested");
+
+const FName SignificanceTagCharacter = FName("Character");
+const float SignificanceValueVeryHigh = 0.f;
+const float SignificanceValueHigh = 1.f;
+const float SignificanceValueMedium = 10.f;
+const float SignificanceValueLow = 100.f;
+const float SignificanceValueVeryLow = 1000.f;
+
+const FName AbilitiesAttributeHealth = FName("Abilities.Attributes.Health");

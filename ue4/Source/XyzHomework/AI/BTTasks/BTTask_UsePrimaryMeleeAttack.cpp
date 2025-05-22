@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "AI/BTTasks/BTTask_UsePrimaryMeleeAttack.h"
 
 #include "AIController.h"
@@ -29,27 +28,17 @@ EBTNodeResult::Type UBTTask_UsePrimaryMeleeAttack::ExecuteTask(UBehaviorTreeComp
 		return EBTNodeResult::Failed;
 	}
 
-	const UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
-	if (!IsValid(Blackboard))
+	if (const UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent())
 	{
-		return EBTNodeResult::Failed;
-	}
+		const AActor* CurrentTarget = Cast<AActor>(Blackboard->GetValueAsObject(AICharacterBTCurrentTargetName));
+		bool bCanSeeTarget = IsValid(CurrentTarget) && Blackboard->GetValueAsBool(AICharacterBTCanSeeTargetName);
 
-	const AActor* CurrentTarget = Cast<AActor>(Blackboard->GetValueAsObject(AICharacterBTCurrentTargetName));
-	const bool bCanSeeTarget = IsValid(CurrentTarget) && Blackboard->GetValueAsBool(AICharacterBTCanSeeTargetName);
-
-	if (bCanSeeTarget)
-	{
-		UCharacterEquipmentComponent* EquipmentComponent = BaseCharacter->GetCharacterEquipmentComponent();
-		if (IsValid(EquipmentComponent))
+		if (bCanSeeTarget)
 		{
-			if (!EquipmentComponent->IsMeleeAttackActive())
+			if (BaseCharacter->GetCharacterEquipmentComponent()->EquipItemBySlot(EEquipmentItemSlot::MeleeWeapon))
 			{
-				if (IsValid(EquipmentComponent->GetCurrentMeleeWeapon()) || EquipmentComponent->EquipItemBySlotType(EEquipmentItemSlot::MeleeWeapon))
-				{
-					BaseCharacter->UsePrimaryMeleeAttack();
-					return EBTNodeResult::Succeeded;
-				}
+				BaseCharacter->StartPrimaryMeleeAttack();
+				return EBTNodeResult::Succeeded;
 			}
 		}
 	}

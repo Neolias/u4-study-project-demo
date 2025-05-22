@@ -6,7 +6,6 @@
 #include "Components/SphereComponent.h"
 #include "MeleeHitRegistrationComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHitRegistered, const FVector, MovementDirection, const FHitResult&, Hit);
 /**
  *
  */
@@ -16,16 +15,18 @@ class XYZHOMEWORK_API UMeleeHitRegistrationComponent : public USphereComponent
 	GENERATED_BODY()
 
 public:
-	FOnHitRegistered OnHitRegisteredEvent;
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnHitRegisteredEvent, FVector, const FHitResult&);
+	FOnHitRegisteredEvent OnHitRegisteredEvent;
 
 	UMeleeHitRegistrationComponent();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	bool IsHitRegistrationEnabled() const { return bIsHitRegistrationEnabled; }
-	void EnableHitRegistration(const bool bIsHitRegistrationEnabled_In);
+	void EnableHitRegistration(bool bIsHitRegistrationEnabled_In);
 
 private:
+	void ProcessHitRegistration();
+
+	TWeakObjectPtr<APawn> CachedPawn;
 	bool bIsHitRegistrationEnabled = false;
 	FVector PreviousComponentLocation = FVector::ZeroVector;
-
-	void ProcessHitRegistration();
 };

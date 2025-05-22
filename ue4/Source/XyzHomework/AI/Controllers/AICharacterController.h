@@ -20,13 +20,12 @@ public:
 
 protected:
 	virtual void SetPawn(APawn* InPawn) override;
-	virtual void BeginPlay() override;
 	virtual void ActorsPerceptionUpdated(const TArray<AActor*>& UpdatedActors) override;
 	virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
 
 private:
+	void TryMoveToNextWayPoint();
+
 	TWeakObjectPtr<class AAICharacter> CachedAICharacter;
 	bool bIsPatrolling = false;
-
-	void TryMoveToNextWayPoint();
 };

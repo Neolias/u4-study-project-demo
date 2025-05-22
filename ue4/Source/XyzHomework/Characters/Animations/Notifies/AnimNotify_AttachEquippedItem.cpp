@@ -9,9 +9,9 @@
 void UAnimNotify_AttachEquippedItem::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
 	Super::Notify(MeshComp, Animation);
-	const AXyzBaseCharacter* CharacterOwner = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
-	if (IsValid(CharacterOwner))
+	const AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(MeshComp->GetOwner());
+	if (IsValid(BaseCharacter))
 	{
-		CharacterOwner->GetCharacterEquipmentComponent()->AttachCurrentEquippedItemToCharacterMesh();
+		BaseCharacter->GetCharacterEquipmentComponent()->AttachCurrentEquipmentItemToCharacterMesh();
 	}	
 }

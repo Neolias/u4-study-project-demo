@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Actors/Equipment/Throwables/ThrowableItem.h"
 
 #include "Actors/Projectiles/ExplosiveProjectile.h"
@@ -13,9 +12,15 @@ AThrowableItem::AThrowableItem()
 	StaticMesh->SetupAttachment(RootComponent);
 }
 
-void AThrowableItem::Throw(AXyzProjectile* ThrowableProjectile, const FVector ResetLocation)
+EWeaponAmmoType AThrowableItem::GetAmmoType()
 {
-	if (!CachedBaseCharacterOwner.IsValid() || !IsValid(ThrowableProjectile))
+	return AmmoType;
+}
+
+void AThrowableItem::Throw(AXyzProjectile* ThrowableProjectile, FVector ResetLocation)
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (!IsValid(BaseCharacter) || !IsValid(ThrowableProjectile))
 	{
 		return;
 	}
@@ -23,29 +28,24 @@ void AThrowableItem::Throw(AXyzProjectile* ThrowableProjectile, const FVector Re
 	CurrentProjectile = ThrowableProjectile;
 	ProjectileResetLocation = ResetLocation;
 
-	if (IsValid(ThrowItemAnimMontage))
+	if (ThrowItemAnimMontage)
 	{
-		const float Duration = CachedBaseCharacterOwner->PlayAnimMontage(ThrowItemAnimMontage);
+		float Duration = BaseCharacter->PlayAnimMontage(ThrowItemAnimMontage);
 		GetWorld()->GetTimerManager().SetTimer(ThrowAnimationTimer, this, &AThrowableItem::OnThrowAnimationFinished, Duration, false);
-		bIsThrowing = true;
 	}
 }
 
-void AThrowableItem::LaunchProjectile() const
+void AThrowableItem::LaunchProjectile()
 {
-	if (!CachedBaseCharacterOwner.IsValid() || !CurrentProjectile.IsValid())
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	AXyzProjectile* Projectile = CurrentProjectile.Get();
+	if (!IsValid(BaseCharacter) || !IsValid(Projectile))
 	{
 		return;
 	}
 
-	const AController* Controller = CachedBaseCharacterOwner->GetInstigatorController();
+	const AController* Controller = BaseCharacter->GetInstigatorController();
 	if (!IsValid(Controller))
-	{
-		return;
-	}
-
-	const USkeletalMeshComponent* CharacterMesh = CachedBaseCharacterOwner->GetMesh();
-	if (!IsValid(CharacterMesh))
 	{
 		return;
 	}
@@ -53,38 +53,37 @@ void AThrowableItem::LaunchProjectile() const
 	FVector POVLocation;
 	FRotator POVRotation;
 	Controller->GetPlayerViewPoint(POVLocation, POVRotation);
-	const FVector ThrowableSocketLocation = CharacterMesh->GetSocketLocation(ThrowableSocketName);
-	const FVector OffsetFromPOV = ThrowableSocketLocation - POVLocation;
-	const FVector POVForwardVector = POVRotation.Vector();
-	const float ForwardOffsetFromPOV = FVector::DotProduct(OffsetFromPOV, POVForwardVector);
-	const FVector StartLocation = POVLocation + POVForwardVector * ForwardOffsetFromPOV;
-	const FRotator LaunchRotation = POVRotation + FRotator(LaunchPitchAngle, LaunchYawAngle, 0.f);
-	const FVector LaunchDirection = LaunchRotation.Vector();
+	FVector ThrowableSocketLocation = BaseCharacter->GetMesh()->GetSocketLocation(ThrowableSocketName);
+	FVector OffsetFromPOV = ThrowableSocketLocation - POVLocation;
+	FVector POVForwardVector = POVRotation.Vector();
+	float ForwardOffsetFromPOV = FVector::DotProduct(OffsetFromPOV, POVForwardVector);
+	FVector StartLocation = POVLocation + POVForwardVector * ForwardOffsetFromPOV;
+	FRotator LaunchRotation = POVRotation + FRotator(LaunchPitchAngle, LaunchYawAngle, 0.f);
+	FVector LaunchDirection = LaunchRotation.Vector();
 
-	CurrentProjectile->SetActorLocation(StartLocation);
-	CurrentProjectile->SetActorRotation(LaunchDirection.ToOrientationRotator());
-	CurrentProjectile->SetProjectileActive(true);
-
-	AExplosiveProjectile* ExplosiveProjectile = Cast<AExplosiveProjectile>(CurrentProjectile);
-	if (IsValid(ExplosiveProjectile))
+	Projectile->SetActorLocation(StartLocation);
+	Projectile->SetActorRotation(LaunchDirection.ToOrientationRotator());
+	Projectile->SetProjectileActive(true);
+	
+	if (AExplosiveProjectile* ExplosiveProjectile = Cast<AExplosiveProjectile>(Projectile))
 	{
-		ExplosiveProjectile->OnProjectileExplosionEvent.AddDynamic(this, &AThrowableItem::OnProjectileExplosion);
+		ExplosiveProjectile->OnProjectileExplosionEvent.AddUObject(this, &AThrowableItem::OnProjectileExplosion);
 	}
 	else
 	{
-		CurrentProjectile->OnCollisionComponentHitEvent.AddDynamic(this, &AThrowableItem::ProcessThrowableProjectileHit);
+		Projectile->OnCollisionComponentHitEvent.AddUObject(this, &AThrowableItem::ProcessThrowableProjectileHit);
 	}
 
-	CurrentProjectile->Launch(LaunchDirection, ProjectileResetLocation);
+	Projectile->Launch(LaunchDirection, ProjectileResetLocation);
 
 	OnThrowEnd();
 }
 
 void AThrowableItem::OnThrowEnd() const
 {
-	if (OnThrowEndEvent.IsBound())
+	if (OnItemThrownEvent.IsBound())
 	{
-		OnThrowEndEvent.Broadcast();
+		OnItemThrownEvent.Broadcast();
 	}
 }
 
@@ -94,26 +93,25 @@ void AThrowableItem::OnThrowAnimationFinished()
 	{
 		OnThrowAnimationFinishedEvent.Broadcast();
 	}
-	bIsThrowing = false;
 }
 
-void AThrowableItem::ProcessThrowableProjectileHit(AXyzProjectile* Projectile, const FVector MovementDirection, const FHitResult& HitResult, const FVector ResetLocation)
+void AThrowableItem::ProcessThrowableProjectileHit(AXyzProjectile* Projectile, FVector MovementDirection, const FHitResult& HitResult, FVector ResetLocation)
 {
 	ResetThrowableProjectile(Projectile, ResetLocation);
 }
 
-void AThrowableItem::OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, const FVector ResetLocation)
+void AThrowableItem::OnProjectileExplosion(AExplosiveProjectile* ExplosiveProjectile, FVector ResetLocation)
 {
 	ExplosiveProjectile->OnProjectileExplosionEvent.RemoveAll(this);
 	ResetThrowableProjectile(ExplosiveProjectile, ResetLocation);
 }
 
-void AThrowableItem::ResetThrowableProjectile(AXyzProjectile* Projectile, const FVector ResetLocation)
+void AThrowableItem::ResetThrowableProjectile(AXyzProjectile* Projectile, FVector ResetLocation)
 {
 	Projectile->SetProjectileActive(false);
 	Projectile->SetActorLocation(ResetLocation);
 	Projectile->SetActorRotation(FRotator::ZeroRotator);
 	Projectile->OnCollisionComponentHitEvent.RemoveAll(this);
 
-	CurrentProjectile = nullptr;
+	CurrentProjectile.Reset();
 }

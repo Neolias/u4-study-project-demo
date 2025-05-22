@@ -1,34 +1,48 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Characters/XyzBaseCharacter.h"
 
 #include "AIController.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "Curves/CurveVector.h"
-#include "Kismet/KismetSystemLibrary.h"
-
+#include "DrawDebugHelpers.h"
 #include "XyzHomeworkTypes.h"
+#include "AbilitySystem/XyzAbilitySystemComponent.h"
+#include "AbilitySystem/AttributeSets/XyzCharacterAttributeSet.h"
+#include "Actors/Environment/EnvironmentActor.h"
+#include "Actors/Environment/Ladder.h"
+#include "Actors/Environment/Zipline.h"
 #include "Actors/Equipment/Throwables/ThrowableItem.h"
 #include "Actors/Equipment/Weapons/MeleeWeaponItem.h"
 #include "Actors/Equipment/Weapons/RangedWeaponItem.h"
-#include "Controllers/XyzPlayerController.h"
-#include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
-#include "Components/CharacterComponents/CharacterAttributesComponent.h"
+#include "Actors/Interactive/Interactable.h"
+#include "Actors/Interactive/PickupItems/PickupItem.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Components/CharacterComponents/CharacterEquipmentComponent.h"
-#include "Actors/Interactive/InteractiveActor.h"
-#include "Actors/Interactive/Environment/Ladder.h"
-#include "Actors/Interactive/Environment/Zipline.h"
+#include "Components/CharacterComponents/CharacterInventoryComponent.h"
+#include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
+#include "Controllers/XyzPlayerController.h"
+#include "Curves/CurveVector.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "UI/Widgets/World/CharacterProgressBarWidget.h"
 
 AXyzBaseCharacter::AXyzBaseCharacter(const FObjectInitializer& ObjectInitializer)
-	:Super(ObjectInitializer.SetDefaultSubobjectClass<UXyzBaseCharMovementComponent>(ACharacter::CharacterMovementComponentName))
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UXyzBaseCharMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
-	checkf(GetCharacterMovement()->IsA<UXyzBaseCharMovementComponent>(), TEXT("AXyzBaseCharacter::AXyzBaseCharacter() should be used only with UXyzBaseCharMovementComponent"))
-		BaseCharacterMovementComponent = StaticCast<UXyzBaseCharMovementComponent*>(GetCharacterMovement());
-
-	CharacterAttributesComponent = CreateDefaultSubobject<UCharacterAttributesComponent>(TEXT("CharacterAttributes"));
+	checkf(GetCharacterMovement()->IsA<UXyzBaseCharMovementComponent>(), TEXT("AXyzBaseCharacter::AXyzBaseCharacter(): can only be used with UXyzBaseCharMovementComponent."))
+	AbilityActivationFlags.AddZeroed((uint32)EGameplayAbility::Max);
+	InitializeGameplayAbilityCallbacks();
+	BaseCharacterMovementComponent = StaticCast<UXyzBaseCharMovementComponent*>(GetCharacterMovement());
 	CharacterEquipmentComponent = CreateDefaultSubobject<UCharacterEquipmentComponent>(TEXT("CharacterEquipment"));
+	CharacterInventoryComponent = CreateDefaultSubobject<UCharacterInventoryComponent>(TEXT("CharacterInventory"));
+	WidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("WidgetComponent"));
+	WidgetComponent->SetupAttachment(GetCapsuleComponent());
+	AbilitySystemComponent = CreateDefaultSubobject<UXyzAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AttributeSet = CreateDefaultSubobject<UXyzCharacterAttributeSet>(TEXT("AttributeSet"));
+	GetMesh()->CastShadow = true;
+	GetMesh()->bCastDynamicShadow = true;
+	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
 	BaseCharacterMovementComponent->CrouchedHalfHeight = 60.f;
 	BaseCharacterMovementComponent->bCanWalkOffLedgesWhenCrouching = 1;
@@ -38,675 +52,919 @@ AXyzBaseCharacter::AXyzBaseCharacter(const FObjectInitializer& ObjectInitializer
 	BaseCharacterMovementComponent->NavAgentProps.bCanCrouch = 1;
 
 	ProneEyeHeight = BaseCharacterMovementComponent->GetProneCapsuleHalfHeight() * .8f;
-
-	GetCapsuleComponent()->SetCapsuleHalfHeight(90.f);
+	GetCapsuleComponent()->SetCapsuleHalfHeight(CollisionCapsuleHalfHeight);
 	CrouchedEyeHeight = 32.f;
-
-	SkeletalMeshComponent = GetMesh();
-	if (IsValid(SkeletalMeshComponent))
-	{
-		SkeletalMeshComponent->CastShadow = true;
-		SkeletalMeshComponent->bCastDynamicShadow = true;
-	}
-
 	CachedCollisionCapsuleScaledRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
 	CachedCollisionCapsuleScaledHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	IKScale = GetActorScale3D().Z;
+}
+
+void AXyzBaseCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	CachedPlayerController = Cast<AXyzPlayerController>(NewController);
+	AAIController* AIController = Cast<AAIController>(NewController);
+	if (IsValid(AIController))
+	{
+		FGenericTeamId TeamId = (uint8)Team;
+		AIController->SetGenericTeamId(TeamId);
+	}
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(NewController, this);
+	}
+}
+
+void AXyzBaseCharacter::UnPossessed()
+{
+	Super::UnPossessed();
+
+	CachedPlayerController.Reset();
 }
 
 void AXyzBaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AXyzBaseCharacter::OnCharacterCapsuleHit);
+	const UDataTable* DataTable = LoadObject<UDataTable>(nullptr, *InventoryItemDataTable.GetUniqueID().GetAssetPathString());
+	checkf(DataTable != nullptr, TEXT("AXyzBaseCharacter::BeginPlay(): InventoryItemDataTable in undefined."))
+
+	AbilitySystemComponent->OnStartup();
+	CharacterEquipmentComponent->SetInventoryItemDataTable(InventoryItemDataTable);
+	CharacterInventoryComponent->SetInventoryItemDataTable(InventoryItemDataTable);
+
 	OnReachedJumpApex.AddDynamic(this, &AXyzBaseCharacter::UpdateJumpApexHeight);
 	LandedDelegate.AddDynamic(this, &AXyzBaseCharacter::OnCharacterLanded);
-	CharacterAttributesComponent->OutOfStaminaEventSignature.AddDynamic(this, &AXyzBaseCharacter::OnOutOfStaminaEvent);
-	CharacterAttributesComponent->OnDeathDelegate.AddDynamic(this, &AXyzBaseCharacter::OnDeath);
+	AttributeSet->OnDeathEvent.AddUObject(this, &AXyzBaseCharacter::OnDeath);
+	if (GetLocalRole() == ROLE_Authority)
+	{
+		GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AXyzBaseCharacter::OnCharacterCapsuleHit);
+		OnTakeAnyDamage.AddDynamic(this, &AXyzBaseCharacter::OnDamageTaken);
+		AttributeSet->OnOutOfStaminaEvent.AddUObject(this, &AXyzBaseCharacter::OnOutOfStamina);
+		AttributeSet->OnOutOfOxygenEvent.AddUObject(this, &AXyzBaseCharacter::OnOutOfOxygen);
+
+		CharacterEquipmentComponent->CreateLoadout();
+	}
+
+	SetupProgressBarWidget();
+	EnableSignificance();
 }
 
-void AXyzBaseCharacter::Tick(const float DeltaSeconds)
+void AXyzBaseCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	TryToggleWeaponFire();
-	if (IsLocallyControlled())
-	{
-		TryToggleAiming();
-		TryChangeSprintState();
-	}
-
-	UpdateSliding();
-
-	IKLeftFootOffset = FMath::FInterpTo(IKLeftFootOffset, GetIKOffsetForSocket(LeftFootSocketName), DeltaSeconds, IKInterpSpeed);
-	IKRightFootOffset = FMath::FInterpTo(IKRightFootOffset, GetIKOffsetForSocket(RightFootSocketName), DeltaSeconds, IKInterpSpeed);
-	IKPelvisOffset = FMath::FInterpTo(IKPelvisOffset, GetPelvisOffset(), DeltaSeconds, IKInterpSpeed);
+	UpdateIKSettings(DeltaSeconds);
+	LineTraceInteractableObject();
+	TryActivateGameplayAbilitiesWithFlags();
 }
 
-// Overrides
-
-FRotator AXyzBaseCharacter::GetAimOffset()
+void AXyzBaseCharacter::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
-	const FVector AimDirectionWorld = GetBaseAimRotation().Vector();
-	const FVector AimDirectionLocal = GetTransform().InverseTransformVector(AimDirectionWorld);
+	Super::EndPlay(EndPlayReason);
+	if (OnInteractiveObjectFound.IsBound())
+	{
+		OnInteractiveObjectFound.Clear();
+	}
+}
+
+FRotator AXyzBaseCharacter::GetAimOffset() const
+{
+	FVector AimDirectionWorld = GetBaseAimRotation().Vector();
+	FVector AimDirectionLocal = GetTransform().InverseTransformVector(AimDirectionWorld);
 	return AimDirectionLocal.ToOrientationRotator();
 }
 
-void AXyzBaseCharacter::PossessedBy(AController* NewController)
+bool AXyzBaseCharacter::IsAnimMontagePlaying() const
 {
-	Super::PossessedBy(NewController);
-	XyzPlayerController = Cast<AXyzPlayerController>(NewController);
-
-	AAIController* AIController = Cast<AAIController>(NewController);
-	if (IsValid(AIController))
-	{
-		const FGenericTeamId TeamId = (uint8)Team;
-		AIController->SetGenericTeamId(TeamId);
-	}
+	return GetMesh()->GetAnimInstance() && GetMesh()->GetAnimInstance()->IsAnyMontagePlaying();
 }
 
-void AXyzBaseCharacter::Jump()
+void AXyzBaseCharacter::EnableRagdoll() const
 {
-	if (BaseCharacterMovementComponent->IsCrouching())
-	{
-		if (BaseCharacterMovementComponent->IsProne())
-		{
-			UnProne();
-		}
-		UnCrouch();
-	}
-	else
-	{
-		Super::Jump();
-	}
+	BaseCharacterMovementComponent->DisableMovement();
+	GetCapsuleComponent()->SetCollisionProfileName("NoCollision");
+	GetMesh()->SetCollisionProfileName(CollisionProfileRagdoll);
+	GetMesh()->SetSimulatePhysics(true);
 }
 
-void AXyzBaseCharacter::OnMovementModeChanged(const EMovementMode PrevMovementMode, const uint8 PreviousCustomMode)
+//@ IGenericTeamAgentInterface
+FGenericTeamId AXyzBaseCharacter::GetGenericTeamId() const
 {
-	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
-	if (!BaseCharacterMovementComponent->IsFalling() && !BaseCharacterMovementComponent->IsMovingOnGround())
-	{
-		CharacterEquipmentComponent->UnequipCurrentItem();
-	}
-	else if (PrevMovementMode != MOVE_Falling && PrevMovementMode != MOVE_Walking)
-	{
-		CharacterEquipmentComponent->EquipPreviousItemIfUnequipped();
-	}
+	return FGenericTeamId((uint8)Team);
 }
+
+//~ IGenericTeamAgentInterface
+
+//@ SaveSubsystemInterface
+void AXyzBaseCharacter::OnLevelDeserialized_Implementation() {}
+//~ SaveSubsystemInterface
 
 void AXyzBaseCharacter::RecalculateBaseEyeHeight()
 {
-	if (BaseCharacterMovementComponent->IsProne() || BaseCharacterMovementComponent->IsSliding())
+	if (IsProne() || IsSliding())
 	{
 		BaseEyeHeight = ProneEyeHeight;
 	}
-	else if (BaseCharacterMovementComponent->IsCrouching())
+	else if (IsCrouching())
 	{
 		BaseEyeHeight = CrouchedEyeHeight;
 	}
 	else
 	{
+		BaseEyeHeight = CrouchedEyeHeight;
 		Super::RecalculateBaseEyeHeight();
 	}
 }
 
-// General
-
-bool AXyzBaseCharacter::IsAnimMontagePlaying()
+void AXyzBaseCharacter::SetupProgressBarWidget()
 {
-	if (IsValid(SkeletalMeshComponent))
+	const UCharacterProgressBarWidget* ProgressBarWidget = Cast<UCharacterProgressBarWidget>(WidgetComponent->GetUserWidgetObject());
+	if (!ProgressBarWidget)
 	{
-		const UAnimInstance* AnimInstance = SkeletalMeshComponent->GetAnimInstance();
-		return IsValid(AnimInstance) && AnimInstance->IsAnyMontagePlaying();
+		WidgetComponent->SetVisibility(false);
+		return;
 	}
-	return false;
-}
 
-void AXyzBaseCharacter::OnCharacterCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-	BaseCharacterMovementComponent->StartWallRun(Hit);
-}
-
-// Aiming
-
-bool AXyzBaseCharacter::CanAim()
-{
-	return bWantsToAim && BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne()
-		&& !BaseCharacterMovementComponent->IsCrouching() && !BaseCharacterMovementComponent->IsSprinting() && !BaseCharacterMovementComponent->IsSliding()
-		&& !CharacterAttributesComponent->IsOutOfStamina() && GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
-}
-
-void AXyzBaseCharacter::SetWantsToAim()
-{
-	bWantsToAim = true;
-}
-
-void AXyzBaseCharacter::StartAiming()
-{
-	const AEquipmentItem* EquipmentItem = CharacterEquipmentComponent->GetCurrentEquipmentItem();
-	if (IsValid(EquipmentItem) && EquipmentItem->CanAimWithThisItem())
+	if (IsLocallyControlled() && Controller->IsA<APlayerController>())
 	{
-		bIsAiming = true;
-		BaseCharacterMovementComponent->bOrientRotationToMovement = false;
-		bUseControllerRotationYaw = true;
-		CurrentAimingMovementSpeed = EquipmentItem->GetAimingWalkSpeed();
-		OnStartAiming();
+		WidgetComponent->SetVisibility(false);
 	}
+
+	AttributeSet->OnHealthChangedEvent.AddUObject(ProgressBarWidget, &UCharacterProgressBarWidget::SetHealthProgressBar);
+	AttributeSet->OnDeathEvent.AddLambda([=](bool bShouldPlayAnimation) { WidgetComponent->SetVisibility(false); });
+	ProgressBarWidget->SetHealthProgressBar(AttributeSet->GetHealth());
 }
 
-void AXyzBaseCharacter::TryToggleAiming()
-{
-	const bool bCanAim = CanAim();
+#pragma region SIGNIFICANCE MANAGER
 
-	if (!bIsAiming && bCanAim)
+void AXyzBaseCharacter::EnableSignificance()
+{
+	if (bIsSignificanceEnabled && GetLocalRole() != ROLE_Authority && !IsLocallyControlled())
 	{
-		StartAiming();
-		if (GetLocalRole() == ROLE_Authority)
+		USignificanceManager* SignificanceManager = FSignificanceManagerModule::Get(GetWorld());
+		if (SignificanceManager)
 		{
-			Multicast_StartAiming();
-		}
-		else if (GetLocalRole() == ROLE_AutonomousProxy)
-		{
-			Server_StartAiming();
-		}
-	}
-	else if (bIsAiming && !bCanAim)
-	{
-		StopAiming();
-		if (GetLocalRole() == ROLE_Authority)
-		{
-			Multicast_StopAiming();
-		}
-		else if (GetLocalRole() == ROLE_AutonomousProxy)
-		{
-			Server_StopAiming();
+			SignificanceManager->RegisterObject(
+				this,
+				SignificanceTagCharacter,
+				[this](USignificanceManager::FManagedObjectInfo* ObjectInfo, const FTransform& ViewPoint) -> float
+				{
+					return SignificanceFunction(ObjectInfo, ViewPoint);
+				},
+				USignificanceManager::EPostSignificanceType::Sequential,
+				[this](USignificanceManager::FManagedObjectInfo* ObjectInfo, float OldSignificance, float Significance,
+				       bool bFinal)
+				{
+					PostSignificanceFunction(ObjectInfo, OldSignificance, Significance, bFinal);
+				}
+			);
 		}
 	}
 }
 
-void AXyzBaseCharacter::Server_StartAiming_Implementation()
+float AXyzBaseCharacter::SignificanceFunction(USignificanceManager::FManagedObjectInfo* ObjectInfo, FTransform ViewPoint)
 {
-	StartAiming();
-	Multicast_StartAiming();
-}
-
-void AXyzBaseCharacter::Multicast_StartAiming_Implementation()
-{
-	if (GetLocalRole() == ROLE_SimulatedProxy)
+	if (ObjectInfo && ObjectInfo->GetTag() == SignificanceTagCharacter)
 	{
-		StartAiming();
+		AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(ObjectInfo->GetObject());
+		if (!IsValid(BaseCharacter))
+		{
+			return SignificanceValueVeryHigh;
+		}
+
+		float DistSquared = FVector::DistSquared(BaseCharacter->GetActorLocation(), ViewPoint.GetLocation());
+		if (DistSquared <= FMath::Square(VeryHighSignificanceDistance))
+		{
+			return SignificanceValueVeryHigh;
+		}
+		if (DistSquared <= FMath::Square(HighSignificanceDistance))
+		{
+			return SignificanceValueHigh;
+		}
+		if (DistSquared <= FMath::Square(MediumSignificanceDistance))
+		{
+			return SignificanceValueMedium;
+		}
+		if (DistSquared <= FMath::Square(LowSignificanceDistance))
+		{
+			return SignificanceValueLow;
+		}
+		return SignificanceValueVeryLow;
 	}
+	return SignificanceValueVeryHigh;
 }
 
-void AXyzBaseCharacter::OnStartAiming_Implementation()
+void AXyzBaseCharacter::PostSignificanceFunction(USignificanceManager::FManagedObjectInfo* ObjectInfo, float OldSignificance, float Significance, bool bFinal)
 {
-	OnStartAimingInternal();
-}
-
-void AXyzBaseCharacter::OnStartAimingInternal()
-{
-	if (OnAimingStateChanged.IsBound())
-	{
-		OnAimingStateChanged.Broadcast(true);
-	}
-}
-
-void AXyzBaseCharacter::ResetWantsToAim()
-{
-	bWantsToAim = false;
-}
-
-void AXyzBaseCharacter::StopAiming()
-{
-	bIsAiming = false;
-	BaseCharacterMovementComponent->bOrientRotationToMovement = true;
-	bUseControllerRotationYaw = false;
-	CurrentAimingMovementSpeed = BaseCharacterMovementComponent->MaxWalkSpeed;
-	OnStopAiming();
-}
-
-void AXyzBaseCharacter::Server_StopAiming_Implementation()
-{
-	Multicast_StopAiming();
-	StopAiming();
-}
-
-void AXyzBaseCharacter::Multicast_StopAiming_Implementation()
-{
-	if (GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		StopAiming();
-	}
-}
-
-void AXyzBaseCharacter::OnStopAiming_Implementation()
-{
-	OnStopAimingInternal();
-}
-
-void AXyzBaseCharacter::OnStopAimingInternal()
-{
-	if (OnAimingStateChanged.IsBound())
-	{
-		OnAimingStateChanged.Broadcast(false);
-	}
-}
-
-// Shooting
-
-bool AXyzBaseCharacter::CanFireWeapon()
-{
-	return bIsAiming;
-}
-
-void AXyzBaseCharacter::TryToggleWeaponFire()
-{
-	if (!CurrentRangedWeapon.IsValid())
+	if (OldSignificance == Significance || ObjectInfo->GetTag() != SignificanceTagCharacter)
 	{
 		return;
 	}
 
-	if (bWantsToFire && CanFireWeapon() && !CurrentRangedWeapon->IsReloading())
+	AXyzBaseCharacter* Character = StaticCast<AXyzBaseCharacter*>(ObjectInfo->GetObject());
+	if (!IsValid(Character))
 	{
-		CurrentRangedWeapon->StartFire();
+		return;
+	}
+
+	if (Significance == SignificanceValueVeryHigh)
+	{
+		SetSignificanceSettings(Character, 0.f, true, .0f, true, 0.f);
+	}
+	else if (Significance == SignificanceValueHigh)
+	{
+		SetSignificanceSettings(Character, .01f, true, .01f, true, .01f);
+	}
+	else if (Significance == SignificanceValueMedium)
+	{
+		SetSignificanceSettings(Character, .05f, false, .05f, true, .05f);
+	}
+	else if (Significance == SignificanceValueLow)
+	{
+		SetSignificanceSettings(Character, .5f, false, .5f, true, .5f);
+	}
+	else if (Significance == SignificanceValueVeryLow)
+	{
+		SetSignificanceSettings(Character, 5.f, false, 5.f, false);
+	}
+}
+
+void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, float MovementComponentTickInterval, bool bWidgetComponentVisibility, float AIControllerTickInterval, bool bMeshTickEnabled, float MeshTickInterval/* = 0.f*/)
+{
+	Character->GetCharacterMovement()->SetComponentTickInterval(MovementComponentTickInterval);
+
+	if (UWidgetComponent* Widget = Character->GetCharacterWidgetComponent())
+	{
+		Widget->SetVisibility(!Character->IsDead() && bWidgetComponentVisibility);
+	}
+
+	AAIController* AIController = Character->GetController<AAIController>();
+	if (IsValid(AIController))
+	{
+		AIController->SetActorTickInterval(AIControllerTickInterval);
+	}
+
+	if (!Character->GetMesh())
+	{
+		return;
+	}
+	Character->GetMesh()->SetComponentTickEnabled(bMeshTickEnabled);
+	if (bMeshTickEnabled)
+	{
+		Character->GetMesh()->SetComponentTickInterval(MeshTickInterval);
+	}
+}
+#pragma endregion
+
+#pragma region GAMEPLAY ABILITY SYSTEM
+
+void AXyzBaseCharacter::SetGameplayAbilityActivationFlag(EGameplayAbility Ability, EGameplayAbilityActivationFlag ActivationFlag)
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	EGameplayAbilityActivationFlag CurrentFlag = AbilityActivationFlags[(uint32)Ability];
+	if (CurrentFlag == ActivationFlag)
+	{
+		return;
+	}
+
+	bool bIsActivated = false;
+	bool bCheckActivation = false;
+	bool bSetNewFlag = false;
+	switch (ActivationFlag)
+	{
+		case EGameplayAbilityActivationFlag::TryActivateOnce:
+			bIsActivated = true;
+			break;
+		case EGameplayAbilityActivationFlag::TryCancelOnce:
+			break;
+		case EGameplayAbilityActivationFlag::TryActivateRepeat:
+			bIsActivated = true;
+			bCheckActivation = true;
+			break;
+		case EGameplayAbilityActivationFlag::TryCancelRepeat:
+			bCheckActivation = true;
+			break;
+		case EGameplayAbilityActivationFlag::ActivateRepeat:
+			bIsActivated = true;
+			bSetNewFlag = true;
+			break;
+		case EGameplayAbilityActivationFlag::CancelRepeat:
+			bSetNewFlag = true;
+			break;
+		default:
+			return;
+	}
+
+	// Trying to execute activation immediately
+	AbilitySystemComponent->ActivateAbility(Ability, bIsActivated);
+	if (bCheckActivation)
+	{
+		bSetNewFlag = AbilitySystemComponent->IsAbilityActiveRemote(Ability) != bIsActivated;
+	}
+	if (!bSetNewFlag)
+	{
+		ActivationFlag = EGameplayAbilityActivationFlag::None;
+	}
+	// Pass activation to the tick function if activation failed or is set to repeat
+	AbilityActivationFlags[(uint32)Ability] = ActivationFlag;
+}
+
+//@ IAbilitySystemInterface
+UAbilitySystemComponent* AXyzBaseCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+//~ IAbilitySystemInterface
+
+void AXyzBaseCharacter::InitializeGameplayAbilityCallbacks()
+{
+	AbilityActivationCallbacks.AddDefaulted((uint32)EGameplayAbility::Max);
+	AbilityDeactivationCallbacks.AddDefaulted((uint32)EGameplayAbility::Max);
+
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Sprint] = [this] { StartSprintInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::Sprint] = [this] { StopSprintInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Crouch] = [this] { CrouchInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::Crouch] = [this] { UnCrouchInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Prone] = [this] { ProneInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::Prone] = [this] { UnProneInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Slide] = [this] { StartSlideInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::Slide] = [this] { StopSlideInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Jump] = [this] { StartJumpInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Mantle] = [this] { StartMantleInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::UseEnvironmentActor] = [this] { StartUseEnvironmentActorInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::UseEnvironmentActor] = [this] { StopUseEnvironmentActorInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::Dive] = [this] { StartDiveInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::Dive] = [this] { StopDiveInternal(); };
+	// AbilityActivationCallbacks[(uint32)EGameplayAbility::Death] = [this] { ; }; // server-only logic inside the ability class
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::OutOfStamina] = [this] { StartOutOfStaminaInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::OutOfStamina] = [this] { StopOutOfStaminaInternal(); };
+	// AbilityActivationCallbacks[(uint32)EGameplayAbility::DrawNextItem] = [this] { ; }; // server-only logic inside the ability class
+	// AbilityActivationCallbacks[(uint32)EGameplayAbility::DrawPreviousItem] = [this] { ; }; // server-only logic inside the ability class
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::DrawPrimaryItem] = [this] { DrawPrimaryItemInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::DrawPrimaryItem] = [this] { SheathePrimaryItemInternal(); };
+	// AbilityActivationCallbacks[(uint32)EGameplayAbility::EquipFromCurrentSlot] = [this] { ; }; // server-only logic inside the ability class
+	// AbilityActivationCallbacks[(uint32)EGameplayAbility::EquipFromCurrentSlotFast] = [this] { ; }; // server-only logic inside the ability class
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::AimWeapon] = [this] { StartAimingInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::AimWeapon] = [this] { StopAimingInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::FireWeapon] = [this] { StartWeaponFireInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::FireWeapon] = [this] { StopWeaponFireInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::ReloadWeapon] = [this] { StartWeaponReloadInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::ReloadWeapon] = [this] { StopWeaponReloadInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::PrimaryMeleeAttack] = [this] { StartPrimaryMeleeAttackInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::PrimaryMeleeAttack] = [this] { StopPrimaryMeleeAttackInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::SecondaryMeleeAttack] = [this] { StartSecondaryMeleeAttackInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::SecondaryMeleeAttack] = [this] { StopSecondaryMeleeAttackInternal(); };
+	AbilityActivationCallbacks[(uint32)EGameplayAbility::ThrowItem] = [this] { StartItemThrowInternal(); };
+	AbilityDeactivationCallbacks[(uint32)EGameplayAbility::ThrowItem] = [this] { StopItemThrowInternal(); };
+}
+
+void AXyzBaseCharacter::TryActivateGameplayAbilitiesWithFlags()
+{
+	for (int32 i = 1; i < (int32)EGameplayAbility::Max; ++i)
+	{
+		EGameplayAbilityActivationFlag ActivationFlag = AbilityActivationFlags[i];
+		EGameplayAbility Ability = (EGameplayAbility)i;
+		switch (ActivationFlag)
+		{
+			case EGameplayAbilityActivationFlag::TryActivateRepeat:
+				AbilitySystemComponent->ActivateAbility(Ability, true);
+				if (AbilitySystemComponent->IsAbilityActiveRemote(Ability))
+				{
+					AbilityActivationFlags[i] = EGameplayAbilityActivationFlag::None;
+				}
+				break;
+			case EGameplayAbilityActivationFlag::TryCancelRepeat:
+				AbilitySystemComponent->ActivateAbility(Ability, false);
+				if (!AbilitySystemComponent->IsAbilityActiveRemote(Ability))
+				{
+					AbilityActivationFlags[i] = EGameplayAbilityActivationFlag::None;
+				}
+				break;
+			case EGameplayAbilityActivationFlag::ActivateRepeat:
+				AbilitySystemComponent->ActivateAbility(Ability, true);
+				break;
+			case EGameplayAbilityActivationFlag::CancelRepeat:
+				AbilitySystemComponent->ActivateAbility(Ability, false);
+				break;
+			default:
+				break;
+		}
+	}
+}
+
+void AXyzBaseCharacter::ExecuteGameplayAbilityCallbackInternal(EGameplayAbility Ability, bool bIsActivationCallback, bool bIsServerCall/* = true*/)
+{
+	if (bIsServerCall && GetLocalRole() == ROLE_AutonomousProxy && AbilitySystemComponent->IsAbilityActiveLocal(Ability) == bIsActivationCallback)
+	{
+		return;
+	}
+
+	uint32 CallbackIndex = (uint32)Ability;
+	TFunction<void()> AbilityCallback;
+	if (bIsActivationCallback)
+	{
+		AbilityCallback = AbilityActivationCallbacks[CallbackIndex];
 	}
 	else
 	{
-		CurrentRangedWeapon->StopFire();
+		AbilityCallback = AbilityDeactivationCallbacks[CallbackIndex];
+	}
+
+	if (AbilityCallback)
+	{
+		AbilityCallback();
 	}
 }
 
-void AXyzBaseCharacter::StartWeaponFire()
+void AXyzBaseCharacter::Multicast_ExecuteGameplayAbilityCallback_Implementation(EGameplayAbility Ability, bool bIsActivationCallback)
 {
-	CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
-	if (!CurrentRangedWeapon.IsValid())
+	ExecuteGameplayAbilityCallbackInternal(Ability, bIsActivationCallback);
+}
+
+#pragma endregion
+
+#pragma region INVENTORY
+
+void AXyzBaseCharacter::TogglePlayerMouseInput(APlayerController* PlayerController)
+{
+	if (!IsValid(PlayerController))
 	{
 		return;
 	}
 
-	const FWeaponModeParameters* ModeParameters = CurrentRangedWeapon->GetWeaponModeParameters();
-	if (!ModeParameters)
+	bool bIsMouseInputEnabled = PlayerController->bShowMouseCursor;
+	PlayerController->bShowMouseCursor = !bIsMouseInputEnabled;
+	if (bIsMouseInputEnabled)
 	{
-		return;
-	}
-	if (CanFireWeapon() && ModeParameters->FireMode == EWeaponFireMode::Single)
-	{
-		CurrentRangedWeapon->StartFire();
-	}
-	else if (ModeParameters->FireMode == EWeaponFireMode::FullAuto)
-	{
-		bWantsToFire = true;
-	}
-}
-
-void AXyzBaseCharacter::StopWeaponFire()
-{
-	CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
-	if (!CurrentRangedWeapon.IsValid())
-	{
-		return;
-	}
-
-	const FWeaponModeParameters* ModeParameters = CurrentRangedWeapon->GetWeaponModeParameters();
-	if (!ModeParameters)
-	{
-		return;
-	}
-	if (ModeParameters->FireMode == EWeaponFireMode::Single)
-	{
-		CurrentRangedWeapon->StopFire();
-
-	}
-	else if (ModeParameters->FireMode == EWeaponFireMode::FullAuto)
-	{
-		bWantsToFire = false;
-	}
-}
-
-void AXyzBaseCharacter::OnReloadStarted()
-{
-	CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
-	if (CurrentRangedWeapon.IsValid())
-	{
-		CurrentReloadingWalkSpeed = CurrentRangedWeapon->GetAimingWalkSpeed();
-		if (CharacterEquipmentComponent->CanReloadCurrentWeapon())
-		{
-			CurrentRangedWeapon->StartReload();
-		}
-	}
-}
-
-void AXyzBaseCharacter::ReloadWeapon()
-{
-	OnReloadStarted();
-	if (GetLocalRole() == ROLE_Authority)
-	{
-		Multicast_OnReloadStarted();
-	}
-	if (GetLocalRole() == ROLE_AutonomousProxy)
-	{
-		Server_OnReloadStarted();
-	}
-}
-
-void AXyzBaseCharacter::Server_OnReloadStarted_Implementation()
-{
-	OnReloadStarted();
-	Multicast_OnReloadStarted();
-}
-
-void AXyzBaseCharacter::Multicast_OnReloadStarted_Implementation()
-{
-	if (GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		OnReloadStarted();
-	}
-}
-
-void AXyzBaseCharacter::Multicast_StartAutoReload_Implementation()
-{
-	OnReloadStarted();
-}
-
-void AXyzBaseCharacter::OnWeaponReloaded()
-{
-	CurrentReloadingWalkSpeed = BaseCharacterMovementComponent->MaxWalkSpeed;
-}
-
-// Melee weapons
-
-void AXyzBaseCharacter::UsePrimaryMeleeAttack()
-{
-	if (BaseCharacterMovementComponent->IsMovingOnGround() && !CharacterEquipmentComponent->IsMeleeAttackActive())
-	{
-		AMeleeWeaponItem* MeleeWeaponItem = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
-		if (IsValid(MeleeWeaponItem))
-		{
-			MeleeWeaponItem->StartAttack(EMeleeAttackType::PrimaryAttack);
-		}
-	}
-}
-
-void AXyzBaseCharacter::UseSecondaryMeleeAttack()
-{
-	if (BaseCharacterMovementComponent->IsMovingOnGround() && !CharacterEquipmentComponent->IsMeleeAttackActive())
-	{
-		AMeleeWeaponItem* MeleeWeaponItem = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
-		if (IsValid(MeleeWeaponItem))
-		{
-			MeleeWeaponItem->StartAttack(EMeleeAttackType::SecondaryAttack);
-		}
-	}
-}
-
-// Equipment Items
-
-bool AXyzBaseCharacter::CanSwitchEquipmentItem()
-{
-	return (BaseCharacterMovementComponent->IsFalling() || BaseCharacterMovementComponent->IsMovingOnGround()) &&
-		!CharacterEquipmentComponent->IsPrimaryItemEquipped() && !CharacterEquipmentComponent->IsMeleeAttackActive()
-		&& !BaseCharacterMovementComponent->IsProne() && !BaseCharacterMovementComponent->IsCrouching();
-}
-
-void AXyzBaseCharacter::DrawNextEquipmentItem()
-{
-	if (CanSwitchEquipmentItem())
-	{
-		CharacterEquipmentComponent->DrawNextItem();
-	}
-}
-
-void AXyzBaseCharacter::DrawPreviousEquipmentItem()
-{
-	if (CanSwitchEquipmentItem())
-	{
-		CharacterEquipmentComponent->DrawPreviousItem();
-	}
-}
-
-bool AXyzBaseCharacter::CanEquipPrimaryItem()
-{
-	return (BaseCharacterMovementComponent->IsFalling() || BaseCharacterMovementComponent->IsMovingOnGround())
-		&& !BaseCharacterMovementComponent->IsProne() && !BaseCharacterMovementComponent->IsCrouching() && !CharacterEquipmentComponent->IsPrimaryItemEquipped();
-}
-
-void AXyzBaseCharacter::OnTogglePrimaryItem(const bool bCanEquip) const
-{
-	if (bCanEquip)
-	{
-		CharacterEquipmentComponent->EquipPrimaryItem();
+		PlayerController->SetInputMode(FInputModeGameOnly{});
 	}
 	else
 	{
-		CharacterEquipmentComponent->UnequipPrimaryItem();
+		PlayerController->SetInputMode(FInputModeGameAndUI{});
 	}
 }
 
-void AXyzBaseCharacter::TogglePrimaryItem()
+void AXyzBaseCharacter::UpdatePlayerMouseInput(APlayerController* PlayerController) const
 {
-	const bool bCanEquip = CanEquipPrimaryItem();
-	Server_OnTogglePrimaryItem(bCanEquip);
-}
-
-void AXyzBaseCharacter::Server_OnTogglePrimaryItem_Implementation(const bool bCanEquip)
-{
-	Multicast_OnTogglePrimaryItem(bCanEquip);
-}
-
-void AXyzBaseCharacter::Multicast_OnTogglePrimaryItem_Implementation(const bool bCanEquip)
-{
-	OnTogglePrimaryItem(bCanEquip);
-}
-
-bool AXyzBaseCharacter::CanThrowItem()
-{
-	return BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne() && !BaseCharacterMovementComponent->IsCrouching()
-		&& !BaseCharacterMovementComponent->IsSprinting() && !BaseCharacterMovementComponent->IsSliding() && !CharacterAttributesComponent->IsOutOfStamina()
-		&& GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
-}
-
-void AXyzBaseCharacter::OnThrowItem()
-{
-	const AThrowableItem* CurrentThrowableItem = CharacterEquipmentComponent->GetCurrentThrowableItem();
-	if (IsValid(CurrentThrowableItem))
-	{
-		CurrentThrowItemMovementSpeed = CurrentThrowableItem->GetThrowingWalkSpeed();
-		if (GetLocalRole() == ROLE_Authority)
-		{
-			CharacterEquipmentComponent->ThrowItem();
-		}
-	}
-}
-
-void AXyzBaseCharacter::ThrowItem()
-{
-	if (CanThrowItem())
-	{
-		Server_ThrowItem();
-	}
-}
-
-void AXyzBaseCharacter::Server_ThrowItem_Implementation()
-{
-	Multicast_ThrowItem();
-}
-
-void AXyzBaseCharacter::Multicast_ThrowItem_Implementation()
-{
-	OnThrowItem();
-}
-
-void AXyzBaseCharacter::ActivateNextWeaponMode()
-{
-	if (BaseCharacterMovementComponent->IsFalling() || BaseCharacterMovementComponent->IsMovingOnGround())
-	{
-		CharacterEquipmentComponent->ActivateNextWeaponMode();
-	}
-}
-
-
-// Jumping / Landing
-
-void AXyzBaseCharacter::UpdateJumpApexHeight()
-{
-	CurrentJumpApexHeight = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-}
-
-void AXyzBaseCharacter::OnCharacterLanded(const FHitResult& Hit)
-{
-	const float FallHeight = CurrentJumpApexHeight - Hit.ImpactPoint.Z;
-	CharacterAttributesComponent->TakeFallDamage(FallHeight);
-
-	if (CharacterAttributesComponent->IsAlive() && FallHeight >= HardLandMinHeight)
-	{
-		OnHardLandStart();
-	}
-}
-
-void AXyzBaseCharacter::OnHardLandStart()
-{
-	if (!IsValid(SkeletalMeshComponent) || !IsValid(HardLandAnimMontage))
+	if (!IsValid(PlayerController))
 	{
 		return;
 	}
 
-	bIsHardLanding = true;
-
-	AController* CharacterController = GetController();
-	if (IsValid(CharacterController))
+	if (CharacterInventoryComponent->IsViewInventoryVisible() || CharacterEquipmentComponent->IsViewEquipmentVisible() || CharacterEquipmentComponent->IsRadialMenuVisible())
 	{
-		CharacterController->SetIgnoreMoveInput(true);
+		PlayerController->SetInputMode(FInputModeGameAndUI{});
+		PlayerController->bShowMouseCursor = true;
 	}
-
-	UAnimInstance* AnimInstance = SkeletalMeshComponent->GetAnimInstance();
-	if (IsValid(AnimInstance))
+	else
 	{
-		const float Duration = AnimInstance->Montage_Play(HardLandAnimMontage, 1.f, EMontagePlayReturnType::Duration);
-		GetWorldTimerManager().SetTimer(HardLandTimer, this, &AXyzBaseCharacter::OnHardLandEnd, Duration, false);
+		PlayerController->SetInputMode(FInputModeGameOnly{});
+		PlayerController->bShowMouseCursor = false;
 	}
 }
 
-
-void AXyzBaseCharacter::OnHardLandEnd()
+void AXyzBaseCharacter::UseInventory(APlayerController* PlayerController) const
 {
-	bIsHardLanding = false;
-
-	AController* CharacterController = GetController();
-	if (IsValid(CharacterController))
+	if (!IsValid(PlayerController))
 	{
-		CharacterController->SetIgnoreMoveInput(false);
+		return;
 	}
-}
 
-// Sprinting
-
-bool AXyzBaseCharacter::CanSprint()
-{
-	return BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne()
-		&& !CharacterAttributesComponent->IsOutOfStamina() && !IsAnimMontagePlaying();
-}
-
-void AXyzBaseCharacter::TryChangeSprintState()
-{
-	if (bIsSprintRequested && CanSprint())
+	if (!CharacterInventoryComponent->IsViewInventoryVisible() || !CharacterEquipmentComponent->IsViewEquipmentVisible())
 	{
-		if (!BaseCharacterMovementComponent->IsSprinting())
+		CharacterInventoryComponent->OpenViewInventory(PlayerController);
+		CharacterEquipmentComponent->OpenViewEquipment(PlayerController);
+	}
+	else
+	{
+		CharacterInventoryComponent->CloseViewInventory();
+		CharacterEquipmentComponent->CloseViewEquipment();
+	}
+
+	UpdatePlayerMouseInput(PlayerController);
+}
+
+void AXyzBaseCharacter::UseRadialMenu(APlayerController* PlayerController) const
+{
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+
+	if (!CharacterEquipmentComponent->IsRadialMenuVisible())
+	{
+		CharacterEquipmentComponent->OpenRadialMenu(PlayerController);
+	}
+	else
+	{
+		CharacterEquipmentComponent->CloseRadialMenu();
+	}
+
+	UpdatePlayerMouseInput(PlayerController);
+}
+
+bool AXyzBaseCharacter::PickupItem(EInventoryItemType ItemType, int32 Amount) const
+{
+	return CharacterInventoryComponent->AddInventoryItem(ItemType, Amount);
+}
+
+void AXyzBaseCharacter::DropItem(EInventoryItemType ItemType, int32 Amount) const
+{
+	if (const UDataTable* DataTable = LoadObject<UDataTable>(nullptr, *InventoryItemDataTable.GetUniqueID().GetAssetPathString()))
+	{
+		FString RowID = UEnum::GetDisplayValueAsText<EInventoryItemType>(ItemType).ToString();
+		const FInventoryTableRow* ItemData = DataTable->FindRow<FInventoryTableRow>(FName(RowID), TEXT("Find item data"));
+		if (ItemData && ItemData->InventoryItemDescription.PickUpItemClass.LoadSynchronous())
 		{
-			if (BaseCharacterMovementComponent->IsCrouching())
+			FTransform SpawnTransform = GetActorTransform();
+			float SpawnRadius = GetCapsuleComponent()->GetScaledCapsuleRadius() * 3;
+			float PosX = FMath::RandRange(-SpawnRadius, SpawnRadius);
+			float PosY = FMath::RandRange(-SpawnRadius, SpawnRadius);
+			SpawnTransform.AddToTranslation(FVector(PosX, PosY, -GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+			float Yaw = FMath::RandRange(-180.f, 180.f);
+			SpawnTransform.SetRotation(FRotator(0.f, Yaw, 0.f).Quaternion());
+			FActorSpawnParameters SpawnParameters;
+			SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+			APickupItem* PickupItem = GetWorld()->SpawnActor<APickupItem>(ItemData->InventoryItemDescription.PickUpItemClass.LoadSynchronous(), SpawnTransform, SpawnParameters);
+
+			if (IsValid(PickupItem))
+			{
+				PickupItem->SetAmount(Amount);
+			}
+		}
+	}
+}
+
+void AXyzBaseCharacter::Server_UseItem_Implementation(UInventoryItem* InventoryItem, UInventorySlot* InventorySlot/* = nullptr*/)
+{
+	if (InventoryItem && InventoryItem->IsEquipment() && InventoryItem->GetEquipmentItemClass().LoadSynchronous())
+	{
+		if (CharacterEquipmentComponent->AddEquipmentItem(InventoryItem->GetEquipmentItemClass().LoadSynchronous(), InventoryItem->GetCount()))
+		{
+			if (IsValid(InventorySlot))
+			{
+				CharacterInventoryComponent->RemoveInventoryItem(InventorySlot, InventoryItem->GetCount());
+			}
+			else
+			{
+				CharacterInventoryComponent->RemoveInventoryItem(InventoryItem->GetInventoryItemType(), InventoryItem->GetCount());
+			}
+		}
+	}
+	else
+	{
+		InventoryItem->Consume(this);
+	}
+}
+
+void AXyzBaseCharacter::Server_AddEquipmentItem_Implementation(EInventoryItemType ItemType, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
+{
+	if (!CharacterEquipmentComponent->AddEquipmentItem(ItemType, Amount, EquipmentSlotIndex) && !CharacterInventoryComponent->AddInventoryItem(ItemType, Amount))
+	{
+		DropItem(ItemType, Amount);
+	}
+}
+
+void AXyzBaseCharacter::Server_RemoveEquipmentItem_Implementation(int32 EquipmentSlotIndex)
+{
+	const AEquipmentItem* EquippedItem = CharacterEquipmentComponent->GetEquippedItem(EquipmentSlotIndex);
+	if (IsValid(EquippedItem) && IsValid(EquippedItem->GetLinkedInventoryItem()) && CharacterEquipmentComponent->RemoveEquipmentItem(EquipmentSlotIndex))
+	{
+		const UInventoryItem* InventoryItem = EquippedItem->GetLinkedInventoryItem();
+		if (!PickupItem(InventoryItem->GetInventoryItemType(), InventoryItem->GetCount()))
+		{
+			DropItem(InventoryItem->GetInventoryItemType(), InventoryItem->GetCount());
+		}
+	}
+}
+
+void AXyzBaseCharacter::Server_DropItem_Implementation(EInventoryItemType ItemType, int32 Amount)
+{
+	DropItem(ItemType, Amount);
+}
+
+bool AXyzBaseCharacter::AddAmmoToInventory(EWeaponAmmoType AmmoType, int32 Amount) const
+{
+	return CharacterInventoryComponent->AddAmmoItem(AmmoType, Amount);
+}
+
+int32 AXyzBaseCharacter::RemoveAmmoFromInventory(EWeaponAmmoType AmmoType, int32 Amount) const
+{
+	return CharacterInventoryComponent->RemoveAmmoItem(AmmoType, Amount);
+}
+#pragma endregion
+
+#pragma region INTERACTIVE OBJECTS
+
+void AXyzBaseCharacter::InteractWithObject()
+{
+	if (CurrentInteractableObject.GetInterface())
+	{
+		Server_InteractWithObject(CurrentInteractableObject.GetObject());
+	}
+}
+
+void AXyzBaseCharacter::Server_InteractWithObject_Implementation(UObject* InteractableObject)
+{
+	Multicast_InteractWithObject(InteractableObject);
+}
+
+void AXyzBaseCharacter::Multicast_InteractWithObject_Implementation(UObject* InteractableObject)
+{
+	CurrentInteractableObject = InteractableObject;
+	if (CurrentInteractableObject.GetInterface())
+	{
+		CurrentInteractableObject->Interact(this);
+	}
+}
+
+void AXyzBaseCharacter::LineTraceInteractableObject()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	FVector ViewPointLocation;
+	FRotator ViewPointRotation;
+	GetController()->GetPlayerViewPoint(ViewPointLocation, ViewPointRotation);
+
+	FHitResult HitResult;
+	FVector EndLocation = ViewPointLocation + ViewPointRotation.Vector() * InteractiveObjectRange;
+	GetWorld()->LineTraceSingleByChannel(HitResult, ViewPointLocation, EndLocation, ECC_Visibility);
+
+	if (CurrentInteractableObject != HitResult.GetActor())
+	{
+		CurrentInteractableObject = HitResult.GetActor();
+		if (OnInteractiveObjectFound.IsBound())
+		{
+			if (CurrentInteractableObject.GetInterface())
+			{
+				OnInteractiveObjectFound.Broadcast(CurrentInteractableObject->GetActionName());
+			}
+			else
+			{
+				OnInteractiveObjectFound.Broadcast(NAME_None);
+			}
+		}
+	}
+}
+#pragma endregion
+
+#pragma region INVERSE KINEMATICS
+
+float AXyzBaseCharacter::GetIKLeftFootOffset() const
+{
+	return IKLeftFootOffset;
+}
+
+float AXyzBaseCharacter::GetIKRightFootOffset() const
+{
+	return IKRightFootOffset;
+}
+
+float AXyzBaseCharacter::GetIKPelvisOffset() const
+{
+	return IKPelvisOffset;
+}
+
+void AXyzBaseCharacter::UpdateIKSettings(float DeltaSeconds)
+{
+	IKLeftFootOffset = FMath::FInterpTo(IKLeftFootOffset, GetIKOffsetForFootSocket(LeftFootSocketName), DeltaSeconds, IKInterpSpeed);
+	IKRightFootOffset = FMath::FInterpTo(IKRightFootOffset, GetIKOffsetForFootSocket(RightFootSocketName), DeltaSeconds, IKInterpSpeed);
+	IKPelvisOffset = FMath::FInterpTo(IKPelvisOffset, GetIKOffsetForPelvisSocket(), DeltaSeconds, IKInterpSpeed);
+}
+
+float AXyzBaseCharacter::GetIKOffsetForFootSocket(FName SocketName) const
+{
+	FVector SocketLocation = GetMesh()->GetSocketLocation(SocketName);
+	FVector TraceStart(SocketLocation.X, SocketLocation.Y, GetActorLocation().Z);
+	FVector CharacterBottomLocation = GetActorLocation();
+	CharacterBottomLocation.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	FVector TraceEnd(SocketLocation.X, SocketLocation.Y, CharacterBottomLocation.Z - MaxFeetIKOffset);
+
+	FHitResult HitResult;
+	ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(ECC_Visibility);
+	FVector FootBoxSize(10.f, 1.f, 5.f);
+	if (UKismetSystemLibrary::BoxTraceSingle(GetWorld(), TraceStart, TraceEnd, FootBoxSize, GetMesh()->GetSocketRotation(SocketName), TraceType, true, TArray<AActor*>(), EDrawDebugTrace::None, HitResult, true))
+	{
+		return FMath::Clamp(HitResult.Location.Z - CharacterBottomLocation.Z, -MaxFeetIKOffset, 0.f);
+	}
+
+	return 0.f;
+}
+
+float AXyzBaseCharacter::GetIKOffsetForPelvisSocket() const
+{
+	return FMath::Min(IKLeftFootOffset, IKRightFootOffset);
+}
+#pragma endregion
+
+#pragma region MOVEMENT
+
+void AXyzBaseCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	if (BaseCharacterMovementComponent->IsMovingOnGround())
+	{
+		if (PreviousCustomMode == (uint8)ECustomMovementMode::CMOVE_WallRun)
+		{
+			// Delay equipping weapons when jumping between walls
+			GetWorld()->GetTimerManager().SetTimer(WallRunEquipItemTimerHandle, [this] { EquipItemFromCurrentSlot(); }, WallRunEquipItemTimerLength, false);
+		}
+		else if (PrevMovementMode != MOVE_Falling)
+		{
+			EquipItemFromCurrentSlot();
+		}
+	}
+	else
+	{
+		bool bWasFiringWeapon = IsFiringWeapon();
+		GetWorld()->GetTimerManager().ClearTimer(WallRunEquipItemTimerHandle);
+		CharacterEquipmentComponent->UnequipCurrentItem();
+
+		if (BaseCharacterMovementComponent->IsFalling())
+		{
+			// Cancel aiming and request it again
+			if (IsAiming())
+			{
+				StopAiming();
+				if (bWasFiringWeapon)
+				{
+					StartWeaponFire();
+				}
+				StartAiming();
+			}
+
+			if (IsCrouching())
 			{
 				UnCrouch();
 			}
-
-			if (!(BaseCharacterMovementComponent->IsCrouching() && !BaseCharacterMovementComponent->bWantsToCrouch))
+		}
+		else if (BaseCharacterMovementComponent->IsSwimming())
+		{
+			if (GetLocalRole() == ROLE_Authority)
 			{
-				BaseCharacterMovementComponent->StartSprint();
+				if (IsCrouching())
+				{
+					// Initiating UnProne and UnCrouch from server to update the capsule size correctly on clients
+					AbilityActivationFlags[(uint32)EGameplayAbility::Prone] = EGameplayAbilityActivationFlag::TryCancelRepeat;
+					AbilityActivationFlags[(uint32)EGameplayAbility::Crouch] = EGameplayAbilityActivationFlag::TryCancelRepeat;
+				}
+				else if (!IsSliding())
+				{
+					BaseCharacterMovementComponent->Multicast_UpdateSwimmingCapsuleSize();
+				}
 			}
+			bUseControllerRotationPitch = true;
 		}
 	}
-	else if (BaseCharacterMovementComponent->IsSprinting())
+
+	if (PrevMovementMode == MOVE_Swimming)
 	{
-		BaseCharacterMovementComponent->StopSprint();
+		BaseCharacterMovementComponent->UpdateSwimmingCapsuleSize();
+		bUseControllerRotationPitch = false;
 	}
+}
+
+void AXyzBaseCharacter::StartJump()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Jump, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StartJumpInternal()
+{
+	Jump();
+}
+#pragma endregion
+
+#pragma region SWIMMING
+
+bool AXyzBaseCharacter::IsDiveAbilityActive() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Dive);
+}
+
+void AXyzBaseCharacter::StartDive()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Dive, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StopDive()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Dive, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+bool AXyzBaseCharacter::IsDiving() const
+{
+	return AbilitySystemComponent->IsEffectActiveRemote(EGameplayEffect::Diving);
+}
+
+void AXyzBaseCharacter::OnDiving(bool bIsDiving) const
+{
+	AbilitySystemComponent->ApplyEffectToSelf(EGameplayEffect::Diving, bIsDiving);
+}
+
+void AXyzBaseCharacter::StartDiveInternal()
+{
+	const auto TimerCallback = FTimerDelegate::CreateLambda([this]
+	{
+		BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Dive, true);
+		StopDive();
+	});
+	GetWorld()->GetTimerManager().SetTimer(DiveTimerHandle, TimerCallback, DiveAbilityLength, false);
+}
+
+void AXyzBaseCharacter::StopDiveInternal() const
+{
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::Dive, false);
+	BaseCharacterMovementComponent->OnDiving(true);
+}
+#pragma endregion
+
+#pragma region SPRINTING
+
+bool AXyzBaseCharacter::IsSprinting() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Sprint);
 }
 
 void AXyzBaseCharacter::StartSprint()
 {
-	bIsSprintRequested = true;
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Sprint, EGameplayAbilityActivationFlag::ActivateRepeat);
 }
 
 void AXyzBaseCharacter::StopSprint()
 {
-	bIsSprintRequested = false;
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Sprint, EGameplayAbilityActivationFlag::TryCancelRepeat);
 }
 
-void AXyzBaseCharacter::OnSprintStart_Implementation()
+void AXyzBaseCharacter::StartSprintInternal()
 {
-	OnSprintStartInternal();
+	if (IsCrouching())
+	{
+		if (IsProne())
+		{
+			UnProne();
+		}
+		UnCrouch();
+	}
+	BaseCharacterMovementComponent->StartSprint();
 }
 
-void AXyzBaseCharacter::OnSprintStop_Implementation()
+void AXyzBaseCharacter::StopSprintInternal() const
 {
-	OnSprintStopInternal();
+	BaseCharacterMovementComponent->StopSprint();
 }
 
-void AXyzBaseCharacter::OnSprintStartInternal()
+void AXyzBaseCharacter::OnStartSprint_Implementation()
 {
 	CharacterEquipmentComponent->UnequipCurrentItem();
 }
 
-void AXyzBaseCharacter::OnSprintStopInternal()
+void AXyzBaseCharacter::OnStopSprint_Implementation()
 {
-	if (!BaseCharacterMovementComponent->IsSliding() && !IsAnimMontagePlaying())
-	{
-		CharacterEquipmentComponent->EquipPreviousItemIfUnequipped();
-	}
+	EquipItemFromCurrentSlot(true);
 }
+#pragma endregion
 
-// Sliding
+#pragma region SLIDING
 
-void AXyzBaseCharacter::UpdateSliding() const
+bool AXyzBaseCharacter::IsSliding() const
 {
-	if (BaseCharacterMovementComponent->IsSliding())
-	{
-		BaseCharacterMovementComponent->AddInputVector(GetActorForwardVector(), 1.f);
-	}
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Slide);
 }
 
 void AXyzBaseCharacter::StartSlide()
 {
-	BaseCharacterMovementComponent->StartSlide();
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Slide, EGameplayAbilityActivationFlag::TryActivateOnce);
 }
 
 void AXyzBaseCharacter::StopSlide()
 {
-	if (BaseCharacterMovementComponent->IsSliding())
-	{
-		BaseCharacterMovementComponent->StopSlide();
-	}
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Slide, EGameplayAbilityActivationFlag::TryCancelOnce);
 }
 
-void AXyzBaseCharacter::OnStartSlide(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AXyzBaseCharacter::OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	if (!IsValid(SlideAnimMontage))
-	{
-		return;
-	}
-
-	CharacterEquipmentComponent->UnequipCurrentItem();
 	RecalculateBaseEyeHeight();
 
-	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-	if (IsValid(GetMesh()) && IsValid(DefaultChar->GetMesh()))
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
 	{
-		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+		const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
 		MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
 		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
-	else
-	{
-		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z + HalfHeightAdjust;
-	}
-
 
 	AController* CharacterController = GetController();
 	if (IsValid(CharacterController))
@@ -715,155 +973,220 @@ void AXyzBaseCharacter::OnStartSlide(const float HalfHeightAdjust, const float S
 		CharacterController->SetIgnoreMoveInput(true);
 	}
 
-	PlayAnimMontage(SlideAnimMontage);
-}
+	CharacterEquipmentComponent->UnequipCurrentItem();
 
-void AXyzBaseCharacter::OnStopSlide(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
-{
-	if (!BaseCharacterMovementComponent->IsSprinting())
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && SlideAnimMontage)
 	{
-		CharacterEquipmentComponent->EquipPreviousItemIfUnequipped();
-	}
-
-	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-	if (IsValid(GetMesh()) && IsValid(DefaultChar->GetMesh()))
-	{
-		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-		MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z;
-		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+		if (AnimInstance->Montage_IsPlaying(SlideAnimMontage))
+		{
+			return;
+		}
+		AnimInstance->Montage_Play(SlideAnimMontage);
+		FOnMontageEnded OnMontageEndedDelegate;
+		OnMontageEndedDelegate.BindLambda([this](UAnimMontage* Montage, bool bInterrupted)
+		{
+			StopSlide();
+		});
+		AnimInstance->Montage_SetEndDelegate(OnMontageEndedDelegate, SlideAnimMontage);
 	}
 	else
 	{
-		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z;
+		StopSlide();
+	}
+}
+
+void AXyzBaseCharacter::OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	RecalculateBaseEyeHeight();
+
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
+	{
+		const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
 
 	AController* CharacterController = GetController();
 	if (IsValid(CharacterController))
 	{
-		CharacterController->SetIgnoreLookInput(false);
-		CharacterController->SetIgnoreMoveInput(false);
+		CharacterController->ResetIgnoreLookInput();
+		CharacterController->ResetIgnoreMoveInput();
 	}
+
+	EquipItemFromCurrentSlot();
 }
 
-// OutOfStamina
-
-void AXyzBaseCharacter::OnOutOfStaminaEvent(const bool bIsOutOfStamina)
+void AXyzBaseCharacter::StartSlideInternal() const
 {
-	if (bIsOutOfStamina)
+	BaseCharacterMovementComponent->StartSlide();
+}
+
+void AXyzBaseCharacter::StopSlideInternal()
+{
+	BaseCharacterMovementComponent->StopSlide();
+	if (BaseCharacterMovementComponent->IsSwimming())
 	{
-		OnOutOfStaminaStart();
+		StopSprint();
+		BaseCharacterMovementComponent->UpdateSwimmingCapsuleSize();
 	}
-	else
+	else if (!BaseCharacterMovementComponent->CanUnCrouch())
 	{
-		OnOutOfStaminaEnd();
+		StopSprint();
+		SetGameplayAbilityActivationFlag(EGameplayAbility::Crouch, EGameplayAbilityActivationFlag::TryActivateRepeat);
 	}
 }
+#pragma endregion
 
-// Crouching
+#pragma region CROUCHING
 
-bool AXyzBaseCharacter::CanCrouch() const
+bool AXyzBaseCharacter::IsCrouching() const
 {
-	return BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsSprinting() && !BaseCharacterMovementComponent->IsSliding()
-		&& !BaseCharacterMovementComponent->IsProne() && !CharacterAttributesComponent->IsOutOfStamina() && Super::CanCrouch();
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Crouch);
 }
 
-void AXyzBaseCharacter::OnStartCrouch(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AXyzBaseCharacter::Crouch(bool bClientSimulation)
 {
-	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Crouch, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::UnCrouch(bool bClientSimulation)
+{
+	UnProne();
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Crouch, EGameplayAbilityActivationFlag::TryCancelRepeat);
+}
+
+void AXyzBaseCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	RecalculateBaseEyeHeight();
+
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
+	{
+		const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+	}
+
+	K2_OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
 	CharacterEquipmentComponent->UnequipCurrentItem();
 }
 
-void AXyzBaseCharacter::OnEndCrouch(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AXyzBaseCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-	if (BaseCharacterMovementComponent->IsMovingOnGround())
+	RecalculateBaseEyeHeight();
+
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
 	{
-		CharacterEquipmentComponent->EquipPreviousItemIfUnequipped();
+		const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
-	Mantle();
+
+	K2_OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	EquipItemFromCurrentSlot();
 }
 
-void AXyzBaseCharacter::ChangeCrouchState()
+void AXyzBaseCharacter::CrouchInternal() const
 {
-	Crouch();
+	BaseCharacterMovementComponent->Crouch();
 }
 
-// Proning
-
-void AXyzBaseCharacter::ChangeProneState() const
+void AXyzBaseCharacter::UnCrouchInternal() const
 {
-	if (BaseCharacterMovementComponent->IsProne())
+	BaseCharacterMovementComponent->UnCrouch();
+	if (BaseCharacterMovementComponent->IsSwimming())
+	{
+		BaseCharacterMovementComponent->UpdateSwimmingCapsuleSize();
+	}
+}
+#pragma endregion
+
+#pragma region PRONE
+
+bool AXyzBaseCharacter::IsProne() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Prone);
+}
+
+void AXyzBaseCharacter::Prone()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Prone, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::UnProne()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Prone, EGameplayAbilityActivationFlag::TryCancelRepeat);
+}
+
+void AXyzBaseCharacter::ToggleProne()
+{
+	if (IsProne())
 	{
 		UnProne();
 	}
-	else if (BaseCharacterMovementComponent->IsCrouching())
+	else
 	{
 		Prone();
 	}
 }
 
-bool AXyzBaseCharacter::CanProne() const
-{
-	return BaseCharacterMovementComponent->IsCrouching() && GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
-}
-
-void AXyzBaseCharacter::Prone() const
-{
-	if (CanProne())
-	{
-		BaseCharacterMovementComponent->SetWantsToProne(true);
-	}
-}
-
-void AXyzBaseCharacter::UnProne() const
-{
-	BaseCharacterMovementComponent->SetWantsToProne(false);
-}
-
-void AXyzBaseCharacter::OnStartProne(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AXyzBaseCharacter::OnStartProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	RecalculateBaseEyeHeight();
 
-	if (IsValid(SkeletalMeshComponent))
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
 	{
-		FVector& MeshRelativeLocation = SkeletalMeshComponent->GetRelativeLocation_DirectMutable();
-		MeshRelativeLocation.Z = SkeletalMeshComponent->GetRelativeLocation().Z + HalfHeightAdjust;
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		MeshRelativeLocation.Z += HalfHeightAdjust;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
 		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
-	}
-	else
-	{
-		BaseTranslationOffset.Z += HalfHeightAdjust;
 	}
 
 	CharacterEquipmentComponent->UnequipCurrentItem();
 }
 
-void AXyzBaseCharacter::OnEndProne(const float HalfHeightAdjust, const float ScaledHalfHeightAdjust)
+void AXyzBaseCharacter::OnStopProne(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	if (IsValid(SkeletalMeshComponent))
+	RecalculateBaseEyeHeight();
+
+	if (HalfHeightAdjust != 0.f && ScaledHalfHeightAdjust != 0.f)
 	{
-		FVector& MeshRelativeLocation = SkeletalMeshComponent->GetRelativeLocation_DirectMutable();
-		MeshRelativeLocation.Z = SkeletalMeshComponent->GetRelativeLocation().Z - HalfHeightAdjust;
+		FVector MeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		MeshRelativeLocation.Z -= HalfHeightAdjust;
+		GetMesh()->SetRelativeLocation(MeshRelativeLocation);
 		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
-	else
-	{
-		BaseTranslationOffset.Z -= HalfHeightAdjust;
-	}
 }
 
-// Mantling
-
-bool AXyzBaseCharacter::CanMantle() const
+void AXyzBaseCharacter::ProneInternal() const
 {
-	return ((BaseCharacterMovementComponent->IsMovingOnGround() && !BaseCharacterMovementComponent->IsProne()
-		&& !BaseCharacterMovementComponent->IsCrouching() && !BaseCharacterMovementComponent->IsSliding()) || BaseCharacterMovementComponent->IsSwimming())
-		&& GetRootComponent() && !GetRootComponent()->IsSimulatingPhysics();
+	BaseCharacterMovementComponent->Prone();
 }
 
-const FMantlingSettings& AXyzBaseCharacter::GetMantlingSettings(const float LedgeHeight) const
+void AXyzBaseCharacter::UnProneInternal() const
 {
-	return LedgeHeight > LowMantleSettings.MaxHeight ? HighMantleSettings : LowMantleSettings;
+	BaseCharacterMovementComponent->UnProne();
+}
+#pragma endregion
+
+#pragma region MANTLING
+
+void AXyzBaseCharacter::StartMantle()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Mantle, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StopMantle()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Mantle, EGameplayAbilityActivationFlag::TryCancelOnce);
 }
 
 bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
@@ -889,6 +1212,12 @@ bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
 	ActorForwardVector.Z = 0.f;
 	FVector ForwardEndLocation = ForwardStartLocation + ForwardTraceDistance * ActorForwardVector.GetSafeNormal();
 	FCollisionShape ForwardCollisionShape = FCollisionShape::MakeCapsule(CachedCollisionCapsuleScaledRadius, ForwardCollisionCapsuleHalfHeight);
+
+	// Ensuring that nothing is blocking in the current position, e.g. ceiling
+	if (World->OverlapBlockingTestByChannel(ForwardStartLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam))
+	{
+		return false;
+	}
 
 	if (World->SweepSingleByChannel(ForwardHitResult, ForwardStartLocation, ForwardEndLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam))
 	{
@@ -922,137 +1251,135 @@ bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
 	return false;
 }
 
-void AXyzBaseCharacter::Mantle(const bool bForceMantle /*= false*/)
+void AXyzBaseCharacter::Mantle(bool bForceMantle /*= false*/)
 {
-	if (CanMantle() || bForceMantle)
+	FLedgeDescription LedgeDescription;
+	if (DetectLedge(LedgeDescription))
 	{
-		FLedgeDescription LedgeDescription;
-		if (DetectLedge(LedgeDescription))
+		FMantlingMovementParameters MantlingParameters;
+		MantlingParameters.InitialLocation = GetActorLocation() + (CachedCollisionCapsuleScaledHalfHeight - GetCapsuleComponent()->GetScaledCapsuleHalfHeight()) * FVector::UpVector;
+		MantlingParameters.InitialRotation = GetActorRotation();
+		MantlingParameters.TargetLocation = LedgeDescription.TargetLocation;
+		MantlingParameters.TargetRotation = LedgeDescription.TargetRotation;
+		MantlingParameters.TargetActor = LedgeDescription.LedgeActor;
+
+		float LedgeHeight = LedgeDescription.TargetLocation.Z - MantlingParameters.InitialLocation.Z;
+		const FMantlingSettings& MantlingSettings = GetMantlingSettings(LedgeHeight);
+		if (!MantlingSettings.MantlingMontage || !MantlingSettings.MantlingCurve)
 		{
-			FMantlingMovementParameters MantlingParameters;
-			MantlingParameters.InitialLocation = GetActorLocation() + (CachedCollisionCapsuleScaledHalfHeight - GetCapsuleComponent()->GetScaledCapsuleHalfHeight()) * FVector::UpVector;
-			MantlingParameters.InitialRotation = GetActorRotation();
-			MantlingParameters.TargetLocation = LedgeDescription.TargetLocation;
-			MantlingParameters.TargetRotation = LedgeDescription.TargetRotation;
-			MantlingParameters.TargetActor = LedgeDescription.LedgeActor;
-
-			const float LedgeHeight = LedgeDescription.TargetLocation.Z - MantlingParameters.InitialLocation.Z;
-			const FMantlingSettings MantlingSettings = GetMantlingSettings(LedgeHeight);
-			if (!IsValid(MantlingSettings.MantlingMontage) || !IsValid(MantlingSettings.MantlingCurve))
-			{
-				return;
-			}
-			MantlingParameters.MantlingCurve = MantlingSettings.MantlingCurve;
-
-			const float MantlingHeight = (MantlingParameters.TargetLocation - MantlingParameters.InitialLocation).Z;
-			float MinRange;
-			float MaxRange;
-			MantlingSettings.MantlingCurve->GetTimeRange(MinRange, MaxRange);
-			MantlingParameters.Duration = MaxRange - MinRange;
-
-			const FVector2D SourceRange(MantlingSettings.MinHeight, MantlingSettings.MaxHeight);
-			const FVector2D TargetRange(MantlingSettings.MinHeightStartTime, MantlingSettings.MaxHeightStartTime);
-			MantlingParameters.StartTime = FMath::GetMappedRangeValueClamped(SourceRange, TargetRange, MantlingHeight);
-			MantlingParameters.InitialAnimationLocation = MantlingParameters.TargetLocation - MantlingSettings.AnimationCorrectionZ * FVector::UpVector + MantlingSettings.AnimationCorrectionXY * LedgeDescription.LedgeNormal;
-
-			if (GetLocalRole() == ROLE_Authority || IsLocallyControlled())
-			{
-				BaseCharacterMovementComponent->StartMantle(MantlingParameters);
-			}
-
-			if (GetLocalRole() == ROLE_Authority)
-			{
-				Multicast_Mantle(true);
-			}
-
-			if (IsValid(SkeletalMeshComponent))
-			{
-				UAnimInstance* AnimInstance = SkeletalMeshComponent->GetAnimInstance();
-				AnimInstance->Montage_Play(MantlingSettings.MantlingMontage, 1.f, EMontagePlayReturnType::Duration, MantlingParameters.StartTime);
-				OnMantle(MantlingSettings, MantlingParameters);
-			}
+			return;
 		}
+		MantlingParameters.MantlingCurve = MantlingSettings.MantlingCurve;
+
+		float MantlingHeight = (MantlingParameters.TargetLocation - MantlingParameters.InitialLocation).Z;
+		float MinRange;
+		float MaxRange;
+		MantlingSettings.MantlingCurve->GetTimeRange(MinRange, MaxRange);
+		MantlingParameters.Duration = MaxRange - MinRange;
+
+		FVector2D SourceRange(MantlingSettings.MinHeight, MantlingSettings.MaxHeight);
+		FVector2D TargetRange(MantlingSettings.MinHeightStartTime, MantlingSettings.MaxHeightStartTime);
+		MantlingParameters.StartTime = FMath::GetMappedRangeValueClamped(SourceRange, TargetRange, MantlingHeight);
+		MantlingParameters.InitialAnimationLocation = MantlingParameters.TargetLocation - MantlingSettings.AnimationCorrectionZ * FVector::UpVector + MantlingSettings.AnimationCorrectionXY * LedgeDescription.LedgeNormal;
+
+		BaseCharacterMovementComponent->StartMantle(MantlingParameters);
+
+		if (GetMesh()->GetAnimInstance())
+		{
+			GetMesh()->GetAnimInstance()->Montage_Play(MantlingSettings.MantlingMontage, 1.f, EMontagePlayReturnType::Duration, MantlingParameters.StartTime);
+		}
+		OnMantle(MantlingSettings, MantlingParameters);
 	}
 }
 
-void AXyzBaseCharacter::Multicast_Mantle_Implementation(const bool bForceMantle)
+const FMantlingSettings& AXyzBaseCharacter::GetMantlingSettings(float LedgeHeight) const
 {
-	if (GetLocalRole() == ROLE_SimulatedProxy)
+	return LedgeHeight > LowMantleSettings.MaxHeight ? HighMantleSettings : LowMantleSettings;
+}
+
+void AXyzBaseCharacter::StartMantleInternal()
+{
+	Mantle();
+}
+#pragma endregion
+
+#pragma region ENVIRONMENT ACTORS
+
+void AXyzBaseCharacter::RegisterEnvironmentActor(AEnvironmentActor* EnvironmentActor)
+{
+	EnvironmentActors.AddUnique(EnvironmentActor);
+}
+
+void AXyzBaseCharacter::UnRegisterEnvironmentActor(AEnvironmentActor* EnvironmentActor)
+{
+	EnvironmentActors.RemoveSingleSwap(EnvironmentActor);
+}
+
+bool AXyzBaseCharacter::CanUseEnvironmentActors() const
+{
+	return EnvironmentActors.Num() > 0;
+}
+
+bool AXyzBaseCharacter::IsUsingEnvironmentActor() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::UseEnvironmentActor);
+}
+
+void AXyzBaseCharacter::ToggleUseEnvironmentActor()
+{
+	if (IsUsingEnvironmentActor())
 	{
-		Mantle(bForceMantle);
-	}
-}
-
-// Interactive Actors
-
-bool AXyzBaseCharacter::CanInteractWithActors() const
-{
-	return !BaseCharacterMovementComponent->IsSliding() && !BaseCharacterMovementComponent->IsProne();
-}
-
-void AXyzBaseCharacter::RegisterInteractiveActor(AInteractiveActor* InteractiveActor)
-{
-	InteractiveActors.AddUnique(InteractiveActor);
-}
-
-void AXyzBaseCharacter::UnRegisterInteractiveActor(AInteractiveActor* InteractiveActor)
-{
-	InteractiveActors.RemoveSingleSwap(InteractiveActor);
-}
-
-void AXyzBaseCharacter::InteractWithLadder()
-{
-	if (!CanInteractWithActors())
-	{
-		return;
-	}
-
-	if (BaseCharacterMovementComponent->IsOnLadder())
-	{
-		BaseCharacterMovementComponent->DetachCharacterFromLadder(EDetachFromLadderMethod::JumpOff);
+		StopUseEnvironmentActor();
 	}
 	else
 	{
-		ALadder* Ladder = GetAvailableLadder();
-		if (IsValid(Ladder))
-		{
-			if (Ladder->IsOnTop())
-			{
-				PlayAnimMontage(Ladder->GetAttachFromTopAnimMontage());
-				OnAttachedToLadderFromTop(Ladder);
-			}
-
-			BaseCharacterMovementComponent->AttachCharacterToLadder(Ladder);
-		}
+		StartUseEnvironmentActor();
 	}
 }
 
-void AXyzBaseCharacter::InteractWithZipline()
+void AXyzBaseCharacter::StartUseEnvironmentActor()
 {
-	if (!CanInteractWithActors())
-	{
-		return;
-	}
+	SetGameplayAbilityActivationFlag(EGameplayAbility::UseEnvironmentActor, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
 
-	if (BaseCharacterMovementComponent->IsOnZipline())
+void AXyzBaseCharacter::StopUseEnvironmentActor()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::UseEnvironmentActor, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+bool AXyzBaseCharacter::TryAttachCharacterToLadder()
+{
+	ALadder* Ladder = GetAvailableLadder();
+	if (IsValid(Ladder))
 	{
-		BaseCharacterMovementComponent->DetachCharacterFromZipline(EDetachFromZiplineMethod::Fall);
-	}
-	else
-	{
-		AZipline* Zipline = GetAvailableZipline();
-		if (IsValid(Zipline))
+		if (Ladder->IsOnTop())
 		{
-			BaseCharacterMovementComponent->AttachCharacterToZipline(Zipline);
+			PlayAnimMontage(Ladder->GetAttachFromTopAnimMontage());
+			OnAttachedToLadderFromTop(Ladder);
 		}
+
+		BaseCharacterMovementComponent->AttachCharacterToLadder(Ladder);
+		return true;
 	}
+	return false;
+}
+
+bool AXyzBaseCharacter::TryAttachCharacterToZipline()
+{
+	AZipline* Zipline = GetAvailableZipline();
+	if (IsValid(Zipline))
+	{
+		BaseCharacterMovementComponent->AttachCharacterToZipline(Zipline);
+		return true;
+	}
+	return false;
 }
 
 ALadder* AXyzBaseCharacter::GetAvailableLadder()
 {
-	for (AInteractiveActor* InteractiveActor : InteractiveActors)
+	for (AEnvironmentActor* EnvironmentActor : EnvironmentActors)
 	{
-		ALadder* Ladder = Cast<ALadder>(InteractiveActor);
+		ALadder* Ladder = Cast<ALadder>(EnvironmentActor);
 		if (IsValid(Ladder))
 		{
 			return Ladder;
@@ -1063,9 +1390,9 @@ ALadder* AXyzBaseCharacter::GetAvailableLadder()
 
 AZipline* AXyzBaseCharacter::GetAvailableZipline()
 {
-	for (AInteractiveActor* InteractiveActor : InteractiveActors)
+	for (AEnvironmentActor* EnvironmentActor : EnvironmentActors)
 	{
-		AZipline* Zipline = Cast<AZipline>(InteractiveActor);
+		AZipline* Zipline = Cast<AZipline>(EnvironmentActor);
 		if (IsValid(Zipline))
 		{
 			return Zipline;
@@ -1074,9 +1401,48 @@ AZipline* AXyzBaseCharacter::GetAvailableZipline()
 	return nullptr;
 }
 
-// Wall Running
+void AXyzBaseCharacter::StartUseEnvironmentActorInternal()
+{
+	if (!TryAttachCharacterToLadder() && !TryAttachCharacterToZipline())
+	{
+		StopUseEnvironmentActor();
+	}
+}
+
+void AXyzBaseCharacter::StopUseEnvironmentActorInternal() const
+{
+	if (GetBaseCharacterMovementComponent()->IsOnLadder())
+	{
+		GetBaseCharacterMovementComponent()->DetachCharacterFromLadder(EDetachFromLadderMethod::JumpOff);
+	}
+
+	if (GetBaseCharacterMovementComponent()->IsOnZipline())
+	{
+		GetBaseCharacterMovementComponent()->DetachCharacterFromZipline(EDetachFromZiplineMethod::Fall);
+	}
+}
+#pragma endregion
+
+#pragma region WALL RUNNING
 
 void AXyzBaseCharacter::JumpOffRunnableWall()
+{
+	Server_JumpOffRunnableWall();
+	if (IsLocallyControlled())
+	{
+		Multicast_JumpOffRunnableWall();
+	}
+}
+
+void AXyzBaseCharacter::Server_JumpOffRunnableWall_Implementation()
+{
+	if (!IsLocallyControlled())
+	{
+		Multicast_JumpOffRunnableWall();
+	}
+}
+
+void AXyzBaseCharacter::Multicast_JumpOffRunnableWall_Implementation()
 {
 	if (BaseCharacterMovementComponent->IsWallRunning())
 	{
@@ -1084,15 +1450,123 @@ void AXyzBaseCharacter::JumpOffRunnableWall()
 	}
 }
 
-// Death
-
-void AXyzBaseCharacter::OnDeath(const bool bShouldPlayAnimMontage)
+void AXyzBaseCharacter::OnCharacterCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	BaseCharacterMovementComponent->DisableMovement();
+	Multicast_StartWallRun(Hit);
+}
 
-	if (bShouldPlayAnimMontage && IsValid(DeathAnimMontage))
+void AXyzBaseCharacter::Multicast_StartWallRun_Implementation(FHitResult HitResult)
+{
+	BaseCharacterMovementComponent->StartWallRun(HitResult);
+}
+#pragma endregion
+
+#pragma region LANDING
+
+void AXyzBaseCharacter::UpdateJumpApexHeight()
+{
+	CurrentJumpApexHeight = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+}
+
+void AXyzBaseCharacter::OnCharacterLanded(const FHitResult& Hit)
+{
+	float FallHeight = CurrentJumpApexHeight - Hit.ImpactPoint.Z;
+	if (FallHeight >= HardLandMinHeight)
 	{
-		const float Duration = PlayAnimMontage(DeathAnimMontage);
+		if (GetLocalRole() == ROLE_Authority)
+		{
+			if (FallDamageCurve)
+			{
+				float Damage = FallDamageCurve->GetFloatValue(FallHeight);
+				AttributeSet->AddHealth(-Damage);
+			}
+
+			if (!IsDead())
+			{
+				StartHardLand();
+			}
+		}
+	}
+	else
+	{
+		// Delay equipping weapons when landing due to the EquipItemFromCurrentSlot ability being executed by the server only (characters can still be in the falling mode there)
+		GetWorld()->GetTimerManager().SetTimer(LandEquipItemTimerHandle, [this] { EquipItemFromCurrentSlot(); }, LandEquipItemTimerLength, false);
+	}
+}
+
+void AXyzBaseCharacter::StartHardLand()
+{
+	Multicast_StartHardLand();
+}
+
+void AXyzBaseCharacter::StopHardLand()
+{
+	bIsHardLanding = false;
+
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
+	{
+		CharacterController->SetIgnoreMoveInput(false);
+	}
+	EquipItemFromCurrentSlot();
+}
+
+void AXyzBaseCharacter::Multicast_StartHardLand_Implementation()
+{
+	if (!HardLandAnimMontage)
+	{
+		return;
+	}
+
+	bIsHardLanding = true;
+
+	AController* CharacterController = GetController();
+	if (IsValid(CharacterController))
+	{
+		CharacterController->SetIgnoreMoveInput(true);
+	}
+
+	GetMesh()->GetAnimInstance()->Montage_Play(HardLandAnimMontage);
+	FOnMontageEnded OnHardLandMontageEnded;
+	OnHardLandMontageEnded.BindLambda([this](UAnimMontage* Montage, bool bInterrupted) { StopHardLand(); });
+	GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(OnHardLandMontageEnded, HardLandAnimMontage);
+}
+#pragma endregion
+
+#pragma region ATTRIBUTES
+
+bool AXyzBaseCharacter::IsDead() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::Death);
+}
+
+bool AXyzBaseCharacter::IsOutOfStamina() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::OutOfStamina);
+}
+
+void AXyzBaseCharacter::StartOutOfStaminaInternal()
+{
+	CharacterEquipmentComponent->UnequipCurrentItem();
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, true);
+}
+
+void AXyzBaseCharacter::StopOutOfStaminaInternal()
+{
+	EquipItemFromCurrentSlot();
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, false);
+}
+
+void AXyzBaseCharacter::OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+{
+	AttributeSet->AddHealth(-Damage);
+}
+
+void AXyzBaseCharacter::OnDeath(bool bShouldPlayAnimMontage)
+{
+	if (bShouldPlayAnimMontage && DeathAnimMontage)
+	{
+		float Duration = PlayAnimMontage(DeathAnimMontage);
 		if (Duration == 0.f)
 		{
 			EnableRagdoll();
@@ -1103,67 +1577,386 @@ void AXyzBaseCharacter::OnDeath(const bool bShouldPlayAnimMontage)
 		EnableRagdoll();
 	}
 
-	OnDeathStarted();
+	SetGameplayAbilityActivationFlag(EGameplayAbility::Death, EGameplayAbilityActivationFlag::TryActivateRepeat);
 }
 
-void AXyzBaseCharacter::EnableRagdoll()
+void AXyzBaseCharacter::OnOutOfStamina(bool bIsOutOfStamina) const
 {
-	GetCapsuleComponent()->SetCollisionProfileName("NoCollision");
-	USkeletalMeshComponent* SkeletalMesh = GetMesh();
-	if (!IsValid(SkeletalMesh))
+	AbilitySystemComponent->ActivateAbility(EGameplayAbility::OutOfStamina, bIsOutOfStamina);
+}
+
+void AXyzBaseCharacter::OnOutOfOxygen(bool bIsOutOfOxygen) const
+{
+	AbilitySystemComponent->ApplyEffectToSelf(EGameplayEffect::OutOfOxygen, bIsOutOfOxygen);
+}
+#pragma endregion
+
+#pragma region EQUIPMENT
+
+void AXyzBaseCharacter::DrawNextItem()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::DrawNextItem, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::DrawPreviousItem()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::DrawPreviousItem, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::EquipItemFromCurrentSlot(bool bShouldSkipAnimation/* = false*/)
+{
+	EGameplayAbility Ability = bShouldSkipAnimation ? EGameplayAbility::EquipFromCurrentSlotFast : EGameplayAbility::EquipFromCurrentSlot;
+	SetGameplayAbilityActivationFlag(Ability, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+bool AXyzBaseCharacter::IsPrimaryItemDrawn() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::DrawPrimaryItem);
+}
+
+float AXyzBaseCharacter::GetCurrentThrowItemMovementSpeed() const
+{
+	return CharacterEquipmentComponent->GetCurrentThrowableWalkSpeed();
+}
+
+void AXyzBaseCharacter::TogglePrimaryItem()
+{
+	EGameplayAbilityActivationFlag Flag = IsPrimaryItemDrawn() ? EGameplayAbilityActivationFlag::TryCancelOnce : EGameplayAbilityActivationFlag::TryActivateOnce;
+	SetGameplayAbilityActivationFlag(EGameplayAbility::DrawPrimaryItem, Flag);
+}
+
+void AXyzBaseCharacter::SheathePrimaryItem()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::DrawPrimaryItem, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+bool AXyzBaseCharacter::IsThrowingItem() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::ThrowItem);
+}
+
+void AXyzBaseCharacter::StartItemThrow()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::ThrowItem, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StopItemThrow()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::ThrowItem, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+void AXyzBaseCharacter::DrawPrimaryItemInternal() const
+{
+	CharacterEquipmentComponent->EquipPrimaryItem();
+}
+
+void AXyzBaseCharacter::SheathePrimaryItemInternal() const
+{
+	CharacterEquipmentComponent->UnequipPrimaryItem();
+}
+
+void AXyzBaseCharacter::StartItemThrowInternal()
+{
+	AThrowableItem* CurrentThrowable = CharacterEquipmentComponent->GetCurrentThrowableItem();
+	if (IsValid(CurrentThrowable))
+	{
+		if (IsLocallyControlled() && !OnThrowItemDelegateHandle.IsValid())
+		{
+			OnThrowItemDelegateHandle = CurrentThrowable->OnThrowAnimationFinishedEvent.AddLambda([this]
+			{
+				StopItemThrow();
+				SheathePrimaryItem();
+			});
+		}
+
+		BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ThrowItem, true);
+		CharacterEquipmentComponent->ThrowItem();
+	}
+}
+
+void AXyzBaseCharacter::StopItemThrowInternal()
+{
+	AThrowableItem* CurrentThrowable = CharacterEquipmentComponent->GetCurrentThrowableItem();
+	if (IsValid(CurrentThrowable))
+	{
+		if (CurrentThrowable->OnThrowAnimationFinishedEvent.Remove(OnThrowItemDelegateHandle))
+		{
+			OnThrowItemDelegateHandle.Reset();
+		}
+	}
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ThrowItem, false);
+}
+#pragma endregion
+
+#pragma region AIMING
+
+bool AXyzBaseCharacter::IsAiming() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::AimWeapon);
+}
+
+void AXyzBaseCharacter::StartAiming()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::AimWeapon, EGameplayAbilityActivationFlag::ActivateRepeat);
+}
+
+void AXyzBaseCharacter::StopAiming()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::AimWeapon, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+void AXyzBaseCharacter::StartAimingInternal()
+{
+	// Handling cases when the character is already trying to fire a weapon
+	// A delay is needed to let the animation transition to the aiming state
+	DelayWeaponFire(DelayWeaponFireOnAiming);
+
+	const AEquipmentItem* EquipmentItem = CharacterEquipmentComponent->GetCurrentEquipmentItem();
+	if (IsValid(EquipmentItem))
+	{
+		BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::AimWeapon, true);
+		BaseCharacterMovementComponent->bOrientRotationToMovement = false;
+		bUseControllerRotationYaw = true;
+		CurrentAimingMovementSpeed = EquipmentItem->GetAimingWalkSpeed();
+	}
+
+	if (OnAimingEvent.IsBound())
+	{
+		OnAimingEvent.Broadcast(true);
+	}
+
+	// Cancel fire and try to restart it
+	if (IsFiringWeapon())
+	{
+		StopWeaponFire();
+		StartWeaponFire();
+	}
+
+	OnStartAiming();
+}
+
+void AXyzBaseCharacter::StopAimingInternal()
+{
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::AimWeapon, false);
+	BaseCharacterMovementComponent->bOrientRotationToMovement = true;
+	bUseControllerRotationYaw = false;
+	CurrentAimingMovementSpeed = BaseCharacterMovementComponent->MaxWalkSpeed;
+
+	if (OnAimingEvent.IsBound())
+	{
+		OnAimingEvent.Broadcast(false);
+	}
+
+	OnStopAiming();
+}
+#pragma endregion
+
+#pragma region RANGED WEAPONS
+
+bool AXyzBaseCharacter::IsFiringWeapon() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::FireWeapon);
+}
+
+void AXyzBaseCharacter::StartWeaponFire()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::FireWeapon, EGameplayAbilityActivationFlag::ActivateRepeat);
+}
+
+void AXyzBaseCharacter::StopWeaponFire()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::FireWeapon, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+void AXyzBaseCharacter::ActivateNextWeaponMode() const
+{
+	CharacterEquipmentComponent->ActivateNextWeaponMode();
+}
+
+bool AXyzBaseCharacter::IsReloadingWeapon() const
+{
+	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::ReloadWeapon);
+}
+
+float AXyzBaseCharacter::GetCurrentReloadingWalkSpeed() const
+{
+	return CharacterEquipmentComponent->GetCurrentWeaponReloadWalkSpeed();
+}
+
+void AXyzBaseCharacter::StartWeaponReload()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::ReloadWeapon, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StartWeaponAutoReload()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::ReloadWeapon, EGameplayAbilityActivationFlag::ActivateRepeat);
+}
+
+void AXyzBaseCharacter::StopWeaponReload()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::ReloadWeapon, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+void AXyzBaseCharacter::StartWeaponFireInternal()
+{
+	ARangedWeaponItem* CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
+	if (IsValid(CurrentRangedWeapon))
+	{
+		const FWeaponModeParameters* ModeParameters = CurrentRangedWeapon->GetWeaponModeParameters();
+		if (ModeParameters && ModeParameters->FireMode == EWeaponFireMode::Single)
+		{
+			CurrentRangedWeapon->StartFire();
+			FDelegateHandle OnShotEndDelegateHandle = CurrentRangedWeapon->OnShotEndEvent.AddLambda([this, CurrentRangedWeapon, OnShotEndDelegateHandle]
+			{
+				StopWeaponFire();
+				if (IsValid(CurrentRangedWeapon))
+				{
+					CurrentRangedWeapon->OnShotEndEvent.Remove(OnShotEndDelegateHandle);
+				}
+			});
+		}
+	}
+}
+
+void AXyzBaseCharacter::StopWeaponFireInternal() const
+{
+	ARangedWeaponItem* CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
+	if (IsValid(CurrentRangedWeapon))
+	{
+		CurrentRangedWeapon->StopFire();
+	}
+}
+
+void AXyzBaseCharacter::StartWeaponReloadInternal()
+{
+	if (CharacterEquipmentComponent->TryReloadCurrentWeapon())
+	{
+		BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ReloadWeapon, true);
+	}
+	else
+	{
+		StopWeaponReload();
+	}
+}
+
+void AXyzBaseCharacter::StopWeaponReloadInternal() const
+{
+	ARangedWeaponItem* CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
+	if (IsValid(CurrentRangedWeapon))
+	{
+		CurrentRangedWeapon->StopReload();
+		BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::ReloadWeapon, false);
+	}
+}
+
+void AXyzBaseCharacter::DelayWeaponFire(float DelayLength)
+{
+	if (GetWorld()->GetTimerManager().GetTimerRemaining(DelayWeaponFireTimerHandle) > DelayLength)
 	{
 		return;
 	}
-	SkeletalMesh->SetCollisionProfileName(CollisionProfileRagdoll);
-	SkeletalMesh->SetSimulatePhysics(true);
+
+	EGameplayAbilityActivationFlag Flag = AbilityActivationFlags[(uint32)EGameplayAbility::FireWeapon];
+	if (Flag == EGameplayAbilityActivationFlag::TryActivateRepeat || Flag == EGameplayAbilityActivationFlag::ActivateRepeat)
+	{
+		StopWeaponFire();
+		GetWorld()->GetTimerManager().SetTimer(DelayWeaponFireTimerHandle, [this] { StartWeaponFire(); }, DelayLength, false);
+	}
+}
+#pragma endregion
+
+#pragma region MELEE WEAPONS
+
+void AXyzBaseCharacter::StartPrimaryMeleeAttack()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::PrimaryMeleeAttack, EGameplayAbilityActivationFlag::TryActivateOnce);
 }
 
-// Inverse Kinematics
-
-float AXyzBaseCharacter::GetIKOffsetForSocket(const FName& SocketName) const
+void AXyzBaseCharacter::StopPrimaryMeleeAttack()
 {
-	float Result = 0.f;
+	SetGameplayAbilityActivationFlag(EGameplayAbility::PrimaryMeleeAttack, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
 
-	if (IsValid(SkeletalMeshComponent))
+void AXyzBaseCharacter::StartSecondaryMeleeAttack()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::SecondaryMeleeAttack, EGameplayAbilityActivationFlag::TryActivateOnce);
+}
+
+void AXyzBaseCharacter::StopSecondaryMeleeAttack()
+{
+	SetGameplayAbilityActivationFlag(EGameplayAbility::SecondaryMeleeAttack, EGameplayAbilityActivationFlag::TryCancelOnce);
+}
+
+void AXyzBaseCharacter::StartPrimaryMeleeAttackInternal()
+{
+	AMeleeWeaponItem* CurrentMeleeWeapon = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
+	if (IsValid(CurrentMeleeWeapon))
 	{
-		const FVector SocketLocation = SkeletalMeshComponent->GetSocketLocation(SocketName);
-		const FVector TraceStart(SocketLocation.X, SocketLocation.Y, GetActorLocation().Z);
-		const float CurrentCapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() * IKScale;
-		const FVector TraceEnd = TraceStart - (CurrentCapsuleHalfHeight + IKTraceDistance) * FVector::UpVector;
-
-		FHitResult HitResult;
-		const ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(ECC_Visibility);
-		const FVector FootBoxSize(10.f, 1.f, 5.f);
-		if (UKismetSystemLibrary::BoxTraceSingle(GetWorld(), TraceStart, TraceEnd, FootBoxSize, SkeletalMeshComponent->GetSocketRotation(SocketName), TraceType, true, TArray<AActor*>(), EDrawDebugTrace::None, HitResult, true))
+		if (IsLocallyControlled())
 		{
-			Result = (TraceStart.Z - CurrentCapsuleHalfHeight - HitResult.Location.Z) / IKScale;
+			if (OnMeleeAttackActivatedDelegateHandle.IsValid())
+			{
+				CurrentMeleeWeapon->OnAttackActivatedEvent.Remove(OnMeleeAttackActivatedDelegateHandle);
+			}
+
+			OnMeleeAttackActivatedDelegateHandle = CurrentMeleeWeapon->OnAttackActivatedEvent.AddLambda([this](bool bIsActivated)
+			{
+				if (!bIsActivated)
+				{
+					StopPrimaryMeleeAttack();
+				}
+			});
+		}
+		CurrentMeleeWeapon->StartAttack(EMeleeAttackType::PrimaryAttack);
+	}
+}
+
+void AXyzBaseCharacter::StopPrimaryMeleeAttackInternal()
+{
+	AMeleeWeaponItem* CurrentMeleeWeapon = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
+	if (IsValid(CurrentMeleeWeapon))
+	{
+		if (CurrentMeleeWeapon->OnAttackActivatedEvent.Remove(OnMeleeAttackActivatedDelegateHandle))
+		{
+			OnThrowItemDelegateHandle.Reset();
 		}
 	}
-
-	return Result;
 }
 
-float AXyzBaseCharacter::GetPelvisOffset() const
+void AXyzBaseCharacter::StartSecondaryMeleeAttackInternal()
 {
-	if (IKLeftFootOffset > 0.f && IKRightFootOffset > 0.f)
+	AMeleeWeaponItem* CurrentMeleeWeapon = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
+	if (IsValid(CurrentMeleeWeapon))
 	{
-		return -FMath::Max(IKLeftFootOffset, IKRightFootOffset);
+		if (IsLocallyControlled())
+		{
+			if (OnMeleeAttackActivatedDelegateHandle.IsValid())
+			{
+				CurrentMeleeWeapon->OnAttackActivatedEvent.Remove(OnMeleeAttackActivatedDelegateHandle);
+			}
+
+			OnMeleeAttackActivatedDelegateHandle = CurrentMeleeWeapon->OnAttackActivatedEvent.AddLambda([this](bool bIsActivated)
+			{
+				if (!bIsActivated)
+				{
+					StopSecondaryMeleeAttack();
+				}
+			});
+		}
+		CurrentMeleeWeapon->StartAttack(EMeleeAttackType::SecondaryAttack);
 	}
-	if (IKLeftFootOffset > 0.f)
-	{
-		return -IKLeftFootOffset;
-	}
-	if (IKRightFootOffset > 0.f)
-	{
-		return -IKRightFootOffset;
-	}
-	return 0.f;
 }
 
-
-// IGenericTeamAgentInterface
-FGenericTeamId AXyzBaseCharacter::GetGenericTeamId() const
+void AXyzBaseCharacter::StopSecondaryMeleeAttackInternal()
 {
-	return FGenericTeamId((uint8)Team);
+	AMeleeWeaponItem* CurrentMeleeWeapon = CharacterEquipmentComponent->GetCurrentMeleeWeapon();
+	if (IsValid(CurrentMeleeWeapon))
+	{
+		if (CurrentMeleeWeapon->OnAttackActivatedEvent.Remove(OnMeleeAttackActivatedDelegateHandle))
+		{
+			OnThrowItemDelegateHandle.Reset();
+		}
+	}
 }
-// ~IGenericTeamAgentInterface
+#pragma endregion
