@@ -2,8 +2,7 @@
 
 ![Gym](Gym.png)
 
-Hello! I started working on this study project as a part of the Unreal Engine 4 course ([XYZ School](https://www.school-xyz.com/main_eng)) in the beginning of 2024.  
-Using the knowledge gained during the course and my independent learning, I improved it and extended most of the features.
+Hello! I started working on this study project as a part of an Unreal Engine 4 course ([XYZ School](https://www.school-xyz.com/main_eng)) in the beginning of 2024. Using the knowledge gained during the course and my independent learning, I improved it and extended most of the features.
 
 Code samples:  
 [BaseCharacter.h](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Characters/XyzBaseCharacter.h)  
