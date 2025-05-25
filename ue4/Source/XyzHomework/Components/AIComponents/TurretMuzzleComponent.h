@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -7,9 +7,6 @@
 #include "Components/SceneComponent.h"
 #include "TurretMuzzleComponent.generated.h"
 
-/**
- *
- */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class XYZHOMEWORK_API UTurretMuzzleComponent : public USceneComponent
 {
@@ -48,6 +45,7 @@ private:
 	APawn* GetOwningPawn() const;
 	AController* GetController() const;
 	void Shoot(AController* Controller) const;
+	/** Calculates a random shot direction based on the bullet spread. */
 	FVector GetShotDirection(FRotator MuzzleRotation) const;
 	void ProcessHit(FVector MovementDirection, const FHitResult& HitResult) const;
 

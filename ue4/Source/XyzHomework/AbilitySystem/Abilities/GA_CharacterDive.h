@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -7,9 +7,7 @@
 #include "GA_CharacterDive.generated.h"
 
 class AXyzBaseCharacter;
-/**
- * 
- */
+
 UCLASS()
 class XYZHOMEWORK_API UGA_CharacterDive : public UGA_CharacterAbilityBase
 {

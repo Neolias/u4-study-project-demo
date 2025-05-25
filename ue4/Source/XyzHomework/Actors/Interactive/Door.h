@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -38,8 +38,10 @@ protected:
 	USceneComponent* DoorPivot;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Category = "Interactable"))
 	UCurveFloat* DoorAnimCurve;
+	/** Angles representing the closed and open states of the door. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Category = "Interactable"))
 	FVector2D MinMaxAnimAngles = FVector2D(0.f, 120.f);
+	/** Name of the input action used to interact with this object (see input component actions). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Category = "Interactable"))
 	FName ActionName = FName("InteractWithObject");
 

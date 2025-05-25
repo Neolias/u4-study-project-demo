@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -22,11 +22,11 @@ public:
 	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override;
 	virtual bool CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* InCharacter, float MaxDelta) const override;
 	virtual void PrepMoveFor(ACharacter* Character) override;
-
+	
 	uint16 SavedCustomCompressedFlags = 0;
 	float SavedWallRunElapsedTime = 0.f;
 
-	// uint16 bit masks used by UXyzBaseCharMovementComponent::MoveAutonomous() to encode movement information.
+	/** uint16 bit masks used by UXyzBaseCharMovementComponent::MoveAutonomous() to encode movement information. */
 	enum ECustomCompressedFlags
 	{
 		FLAG_IsCrouching = 0x01,
@@ -58,7 +58,9 @@ public:
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType) override;
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType) override;
 
+	/** Additional compressed flags mainly replicated to control the max movement speed of the character. */
 	uint16 CustomCompressedFlags = 0;
+	/** Timer used to update vertical displacement of the character during wall running. */
 	float WallRunElapsedTime = 0.f;
 };
 
@@ -78,9 +80,7 @@ public:
 };
 #pragma endregion
 
-/**
- *
- */
+/** Extends the default character movement component with new movement actions and modes. Includes full replication of the new features via SavedMoves. */
 UCLASS()
 class XYZHOMEWORK_API UXyzBaseCharMovementComponent : public UCharacterMovementComponent
 {
@@ -102,14 +102,18 @@ private:
 	class AXyzBaseCharacter* BaseCharacterOwner;
 	UPROPERTY()
 	class UCharacterEquipmentComponent* CharacterEquipmentComponent;
-	FRotator ForceTargetRotation = FRotator::ZeroRotator;
+	/** Flag enabling custom rotation logic during PhysicsRotation(). */
 	bool bForceRotation = false;
+	/** Custom rotation applied to the character when bForceRotation flag is set to true. */
+	FRotator ForceTargetRotation = FRotator::ZeroRotator;
 
 #pragma region REPLICATION
 
 public:
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+	/** Returns a movement flag stored in MovementFlags. */
 	bool GetMovementFlag(uint32 FlagIndex) const;
+	/** Sets a new value for a movement flag stored in MovementFlags. */
 	void SetMovementFlag(uint32 FlagIndex, bool bIsActivated);
 
 protected:
@@ -117,6 +121,7 @@ protected:
 
 private:
 	FXyzNetworkMoveDataContainer XyzNetworkMoveDataContainer;
+	/** Movement flags describing activation statuses of gameplay abilities. Used to update the max movement speed of the character in GetMaxSpeed(). */
 	TArray<bool> MovementFlags;
 #pragma endregion
 
@@ -124,11 +129,20 @@ private:
 
 public:
 	virtual FRotator ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const override;
-	void UpdateSwimmingCapsuleSize();
+	/** Sets the swimming capsule size if swimming. Resets to the default capsule size otherwise. */
+	void UpdateSwimmingCapsuleSize() const;
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_UpdateSwimmingCapsuleSize();
 	void SetSwimmingOnWaterPlane(bool bInIsSwimmingOnWaterPlane);
+	/**
+	 * Is the character located below the water surface?
+	 * @param LocationOffset Offset that allows for prediction, e.g. if passing the Velocity value.
+	 */
 	bool IsSwimmingUnderWater(FVector LocationOffset = FVector::ZeroVector) const;
+	/**
+	 * Updates the Diving status of the character.
+	 * @param bIsDiving New status.
+	 */
 	void OnDiving(bool bIsDiving);
 
 	bool bIsSwimmingOnWaterPlane = false;
@@ -144,8 +158,10 @@ protected:
 	float DiveSpeed = 100.f;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Swimming", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float EmergeSpeed = 100.f;
+	/** How far from the water plane the character should be located to detect the plane. */
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Swimming", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float WaterPlaneDetectionRangeZ = 25.f;
+	/** How far from the water plane the character should be located to snap to the plane vertically. */
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Swimming")
 	float WaterSnappingOffsetZ = -5.f;
 
@@ -178,11 +194,13 @@ public:
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void UpdateCharacterStateAfterMovement(float DeltaSeconds) override;
 	virtual bool IsCrouching() const override;
+	/** Conducts an overlap test and returns its result. */
 	bool CanUnCrouch() const;
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation = false) override;
 	float GetProneCapsuleHalfHeight() const { return ProneCapsuleHalfHeight; }
 	void Prone();
+	/** Conducts an overlap test and returns its result. */
 	bool CanUnProne() const;
 	bool UnProne();
 
@@ -216,6 +234,7 @@ public:
 	ALadder* GetCurrentLadder() const { return CurrentLadder.Get(); }
 	bool IsOnLadder() const;
 	bool IsOnTopOfCurrentLadder() const;
+	/** How fast the character should move verticatlly. */
 	float GetLadderSpeedRatio() const;
 	void AttachCharacterToLadder(ALadder* Ladder);
 	void DetachCharacterFromLadder(EDetachFromLadderMethod DetachFromLadderMethod);
@@ -286,19 +305,20 @@ protected:
 	float WallRunRotationInterpSpeed = 20.f;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running")
 	FVector CharacterOffsetFromWallPlane = FVector(0.f, 45.f, 0.f);
+	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running")
+	float CharacterAngleOffsetFromWallPlane = 7.5f;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float WallRunLineTraceLength = 200.f;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float WallRunMaxVerticalDisplacement = 150.f;
 	UPROPERTY(EditDefaultsOnly, Category = "Base Character|Movement Component|Wall Running")
 	UCurveFloat* WallRunVerticalDisplacementCurve;
-	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running")
-	float CharacterAngleOffsetFromWallPlane = 7.5f;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float JumpOffWallRunSpeed = 500.f;
 
 private:
 	bool CanWallRunInCurrentState() const;
+	/** Is the surface NOT walkable? */
 	bool IsSurfaceWallRunnable(const FVector& SurfaceNormal) const;
 	void GetWallRunSideAndDirection(FVector HitNormal, OUT EWallRunSide& OutSide, OUT FVector& OutDirection) const;
 	void GetUpdatedWallRunDeltaAndRotation(float DeltaTime, const FHitResult& HitResult, OUT FVector& DisplacementDelta, OUT FRotator& UpdatedCharacterRotation) const;
@@ -306,11 +326,12 @@ private:
 	void EndWallRun();
 	bool UpdateWallRunVelocity(FHitResult& HitResult);
 	void PhysWallRun(float DeltaTime, int32 Iterations);
-
+	
 	EWallRunSide CurrentWallRunSide = EWallRunSide::None;
 	FVector CurrentWallRunDirection = FVector::ZeroVector;
 	FVector WallRunStartLocation = FVector::ZeroVector;
 	float WallRunElapsedTime = 0.f;
+	/** Can the character be attached to runnable walls with the same side while falling? */
 	bool bCanUseSameWallRunSide = false;
 #pragma endregion
 };

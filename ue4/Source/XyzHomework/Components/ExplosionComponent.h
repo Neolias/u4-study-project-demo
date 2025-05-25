@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,6 +6,7 @@
 #include "Components/SceneComponent.h"
 #include "ExplosionComponent.generated.h"
 
+/** Component that can be attached to an actor to add explosion damage and effects. */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class XYZHOMEWORK_API UExplosionComponent : public USceneComponent
 {
@@ -13,12 +14,12 @@ class XYZHOMEWORK_API UExplosionComponent : public USceneComponent
 
 public:
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnExplostionEvent);
-
 	UPROPERTY(BlueprintAssignable, Category = "Explosion Component")
 	FOnExplostionEvent OnExplosionEvent;
 
 	UExplosionComponent();
 	virtual void BeginPlay() override;
+	/** Applies radial damage and spawns visual effects. */
 	void Explode();
 
 protected:

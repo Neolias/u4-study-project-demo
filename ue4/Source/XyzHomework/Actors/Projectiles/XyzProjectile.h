@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "XyzProjectile.generated.h"
 
+/** Base class of all projectiles. */
 UCLASS()
 class XYZHOMEWORK_API AXyzProjectile : public AActor
 {
@@ -17,6 +18,7 @@ public:
 
 	AXyzProjectile();
 	virtual void Tick(float DeltaSeconds) override;
+	/** Makes the projectile visible and enables its movement. */
 	void SetProjectileActive(bool bIsActive);
 	virtual void Launch(FVector Direction, FVector ProjectileResetLocation = FVector::ZeroVector);
 
@@ -40,5 +42,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Projectile", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float Bounciness = 0.1f;
 
+	/** Location where the projectile will idle while it is not used (location of the projectile pool). */
 	FVector ResetLocation = FVector::ZeroVector;
 };

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Characters/Animations/XyzBaseCharacterAnimInstance.h"
 
@@ -57,9 +57,9 @@ void UXyzBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		LadderSpeedRatio = BaseCharMovementComponent->GetLadderSpeedRatio();
 	}
 
-	float PelvisOffset = BaseCharacter->GetIKPelvisOffset();
-	LeftFootEffectorLocation = FVector(BaseCharacter->GetIKLeftFootOffset() - PelvisOffset, 0.f, 0.f);
-	RightFootEffectorLocation = FVector(BaseCharacter->GetIKRightFootOffset() - PelvisOffset, 0.f, 0.f);
+	float PelvisOffset = BaseCharacter->GetIKPelvisOffsetZ();
+	LeftFootEffectorLocation = FVector(BaseCharacter->GetIKLeftFootOffsetZ() - PelvisOffset, 0.f, 0.f);
+	RightFootEffectorLocation = FVector(BaseCharacter->GetIKRightFootOffsetZ() - PelvisOffset, 0.f, 0.f);
 	PelvisEffectorLocation = FVector(0.f, 0.f, PelvisOffset);
 	const ARangedWeaponItem* CurrentRangedWeapon = CharacterEquipmentComponent->GetCurrentRangedWeapon();
 	if (IsValid(CurrentRangedWeapon))

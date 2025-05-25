@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "UI/Widgets/Equipment/RadialMenuWidget.h"
 
@@ -27,7 +27,7 @@ void URadialMenuWidget::UpdateMenuSegmentWidgets()
 	{
 		if (UImage* ImageIcon = MenuSegmentWidgets[i]->WidgetTree->FindWidget<UImage>(SegmentItemIconName))
 		{
-			const AEquipmentItem* EquipmentItem = EquipmentComponent->GetEquippedItem((uint32)ItemSlotsInMenuSegments[i]);
+			const AEquipmentItem* EquipmentItem = EquipmentComponent->GetEquipmentItemInSlot((uint32)ItemSlotsInMenuSegments[i]);
 			if (IsValid(EquipmentItem) && IsValid(EquipmentItem->GetLinkedInventoryItem()))
 			{
 				ImageIcon->SetBrushFromTexture(EquipmentItem->GetLinkedInventoryItem()->GetItemDescription().Icon);
@@ -191,7 +191,7 @@ void URadialMenuWidget::OnNewSegmentSelected(int32 NewSegmentIndex)
 		return;
 	}
 
-	const AEquipmentItem* EquipmentItem = EquipmentComponent->GetEquippedItem((uint32)ItemSlotsInMenuSegments[CurrentSegmentIndex]);
+	const AEquipmentItem* EquipmentItem = EquipmentComponent->GetEquipmentItemInSlot((uint32)ItemSlotsInMenuSegments[CurrentSegmentIndex]);
 	if (IsValid(EquipmentItem) && IsValid(EquipmentItem->GetLinkedInventoryItem()))
 	{
 		EquippedItemText->SetText(EquipmentItem->GetLinkedInventoryItem()->GetItemDescription().Name);

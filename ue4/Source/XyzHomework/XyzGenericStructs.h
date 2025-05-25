@@ -1,3 +1,5 @@
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -35,6 +37,7 @@ public:
 	UCurveVector* MantlingCurve;
 };
 
+/** Struct that describes a mountable ledge during character mantling. */
 USTRUCT(BlueprintType)
 struct FLedgeDescription
 {
@@ -93,6 +96,7 @@ public:
 	float DecalFadeOutTime = 5.0f;
 };
 
+/** Struct that describes a ranged weapon shooting mode. */
 USTRUCT(BlueprintType)
 struct FWeaponModeParameters
 {
@@ -149,6 +153,7 @@ public:
 	FName ReloadEndSectionName = "ReloadEnd";
 };
 
+/** Struct that describes a melee weapon attack. */
 USTRUCT(BlueprintType)
 struct FMeleeAttackDescription
 {

@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "XyzGameInstance.h"
 
 #include "OnlineSubsystem.h"
@@ -137,7 +136,7 @@ bool UXyzGameInstance::HostSession(TSharedPtr<const FUniqueNetId> UserId, FName 
 	}
 	else
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("No OnlineSubsytem found!"));
+		GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("No OnlineSubsystem found!"));
 	}
 
 	return false;
@@ -182,7 +181,7 @@ void UXyzGameInstance::OnStartOnlineGameComplete(FName SessionName, bool bWasSuc
 
 	if (!bWasSuccessful)
 	{
-		DisplayNetworkErrorMessage(TEXT("OnStartSessionCompletCannot start online game! Please try again"));
+		DisplayNetworkErrorMessage(TEXT("OnStartSessionComplete: Cannot start online game! Please try again"));
 		return;
 	}
 

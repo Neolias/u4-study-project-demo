@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "AbilitySystem/XyzAbilitySystemComponent.h"
 
@@ -224,13 +224,13 @@ void UXyzAbilitySystemComponent::OnAbilityStatusChanged(UGameplayAbility* Abilit
 	}
 }
 
-void UXyzAbilitySystemComponent::OnAbilityActivationFailure(const UGameplayAbility* Ability, bool bActivationFlag)
+void UXyzAbilitySystemComponent::OnAbilityActivationFailure(const UGameplayAbility* Ability, bool bFailedActivationFlag)
 {
 	bool bIsLocalPredicted = Ability && Ability->GetInstancingPolicy() != EGameplayAbilityInstancingPolicy::NonInstanced
 		&& Ability->GetNetExecutionPolicy() == EGameplayAbilityNetExecutionPolicy::LocalPredicted && Ability->GetReplicationPolicy() == EGameplayAbilityReplicationPolicy::ReplicateYes;
 	if (bIsLocalPredicted)
 	{
-		Multicast_HandlePredictedAbilityActivationFailure((EGameplayAbility)GetAbilityIndex(Ability), bActivationFlag);
+		Multicast_HandlePredictedAbilityActivationFailure((EGameplayAbility)GetAbilityIndex(Ability), bFailedActivationFlag);
 	}
 }
 

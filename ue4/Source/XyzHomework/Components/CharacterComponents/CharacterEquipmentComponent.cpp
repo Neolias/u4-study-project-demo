@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Components/CharacterComponents/CharacterEquipmentComponent.h"
 
@@ -128,7 +128,7 @@ void UCharacterEquipmentComponent::JumpToAnimMontageSection(FName SectionName) c
 
 #pragma region INVENTORY MANAGEMENT
 
-AEquipmentItem* UCharacterEquipmentComponent::GetEquippedItem(int32 SlotIndex)
+AEquipmentItem* UCharacterEquipmentComponent::GetEquipmentItemInSlot(int32 SlotIndex)
 {
 	if (EquippedItemsArray.Num() > 0 && SlotIndex >= 0 && SlotIndex < EquippedItemsArray.Num())
 	{
@@ -167,18 +167,18 @@ void UCharacterEquipmentComponent::CreateLoadout()
 	}
 }
 
-bool UCharacterEquipmentComponent::AddEquipmentItem(EInventoryItemType ItemType, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
+bool UCharacterEquipmentComponent::AddEquipmentItemByType(EInventoryItemType ItemType, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
 {
 	const FInventoryTableRow* ItemData = LoadItemDataFromDataTable(ItemType);
 	if (ItemData && ItemData->InventoryItemDescription.EquipmentItemClass.LoadSynchronous())
 	{
-		return AddEquipmentItem(ItemData->InventoryItemDescription.EquipmentItemClass.LoadSynchronous(), Amount, EquipmentSlotIndex);
+		return AddEquipmentItemByClass(ItemData->InventoryItemDescription.EquipmentItemClass.LoadSynchronous(), Amount, EquipmentSlotIndex);
 	}
 
 	return false;
 }
 
-bool UCharacterEquipmentComponent::AddEquipmentItem(TSubclassOf<AEquipmentItem> EquipmentItemClass, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
+bool UCharacterEquipmentComponent::AddEquipmentItemByClass(TSubclassOf<AEquipmentItem> EquipmentItemClass, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
 {
 	if (Amount < 1 || EquipmentSlotIndex == 0 || EquipmentSlotIndex < -1 || !EquipmentItemClass)
 	{
@@ -202,7 +202,7 @@ bool UCharacterEquipmentComponent::AddEquipmentItem(TSubclassOf<AEquipmentItem> 
 		return false;
 	}
 
-	// If an item is already equipped
+	// If an item is already equipped in the slot
 	AEquipmentItem* EquippedItem = EquippedItemsArray[(int32)EquipmentSlot];
 	if (IsValid(EquippedItem))
 	{
@@ -457,7 +457,7 @@ void UCharacterEquipmentComponent::LoadoutOneItem(EEquipmentItemSlot EquipmentSl
 	UInventoryItem* InventoryItem = EquipmentItem->GetLinkedInventoryItem();
 	if (IsValid(InventoryItem) && InventoryItem->CanStackItems())
 	{
-		// Only applies to equipment items that serve as ammo units, e.g. grenades
+		// Applies only to equipment items that serve as ammo units, e.g. grenades
 		// Filling the slot using ammo from EquipmentAmmoArray
 		// Adding the remaining ammo to the inventory as items
 
@@ -528,8 +528,6 @@ void UCharacterEquipmentComponent::InitializeInventoryItem(AEquipmentItem* Equip
 
 EEquipmentItemSlot UCharacterEquipmentComponent::FindCompatibleSlot(AEquipmentItem* EquipmentItem)
 {
-	// Find a free slot or a slot holding an item of different type
-
 	EEquipmentItemSlot EquipmentSlot = EEquipmentItemSlot::None;
 	for (EEquipmentItemSlot Slot : EquipmentItem->GetCompatibleEquipmentSlots())
 	{
@@ -955,9 +953,9 @@ void UCharacterEquipmentComponent::EquipPrimaryItem(bool bForceEquip/* = false*/
 	}
 }
 
-void UCharacterEquipmentComponent::UnequipPrimaryItem(bool bForceUnequip/* = false*/)
+void UCharacterEquipmentComponent::UnequipPrimaryItem()
 {
-	if (!bForceUnequip && !IsPrimaryItemEquipped())
+	if (!IsPrimaryItemEquipped())
 	{
 		return;
 	}

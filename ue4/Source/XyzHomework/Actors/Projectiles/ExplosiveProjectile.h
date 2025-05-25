@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,6 +6,7 @@
 #include "Actors/Projectiles/XyzProjectile.h"
 #include "ExplosiveProjectile.generated.h"
 
+/** Base class of all projectiles that own the explosive component. */
 UCLASS()
 class XYZHOMEWORK_API AExplosiveProjectile : public AXyzProjectile
 {

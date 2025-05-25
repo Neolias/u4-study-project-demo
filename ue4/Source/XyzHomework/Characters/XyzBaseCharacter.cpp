@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Characters/XyzBaseCharacter.h"
 
@@ -116,7 +116,7 @@ void AXyzBaseCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateIKSettings(DeltaSeconds);
-	LineTraceInteractableObject();
+	LineTraceInteractiveObject();
 	TryActivateGameplayAbilitiesWithFlags();
 }
 
@@ -293,6 +293,11 @@ void AXyzBaseCharacter::PostSignificanceFunction(USignificanceManager::FManagedO
 
 void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, float MovementComponentTickInterval, bool bWidgetComponentVisibility, float AIControllerTickInterval, bool bMeshTickEnabled, float MeshTickInterval/* = 0.f*/)
 {
+	if (!IsValid(Character))
+	{
+		return;
+	}
+	
 	Character->GetCharacterMovement()->SetComponentTickInterval(MovementComponentTickInterval);
 
 	if (UWidgetComponent* Widget = Character->GetCharacterWidgetComponent())
@@ -305,11 +310,7 @@ void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, fl
 	{
 		AIController->SetActorTickInterval(AIControllerTickInterval);
 	}
-
-	if (!Character->GetMesh())
-	{
-		return;
-	}
+	
 	Character->GetMesh()->SetComponentTickEnabled(bMeshTickEnabled);
 	if (bMeshTickEnabled)
 	{
@@ -461,6 +462,8 @@ void AXyzBaseCharacter::TryActivateGameplayAbilitiesWithFlags()
 
 void AXyzBaseCharacter::ExecuteGameplayAbilityCallbackInternal(EGameplayAbility Ability, bool bIsActivationCallback, bool bIsServerCall/* = true*/)
 {
+	// Discarding the ability activation if it is already activated on AutonomousProxy
+	// Used to avoid duplicated activation of predicted abilities
 	if (bIsServerCall && GetLocalRole() == ROLE_AutonomousProxy && AbilitySystemComponent->IsAbilityActiveLocal(Ability) == bIsActivationCallback)
 	{
 		return;
@@ -606,15 +609,15 @@ void AXyzBaseCharacter::Server_UseItem_Implementation(UInventoryItem* InventoryI
 {
 	if (InventoryItem && InventoryItem->IsEquipment() && InventoryItem->GetEquipmentItemClass().LoadSynchronous())
 	{
-		if (CharacterEquipmentComponent->AddEquipmentItem(InventoryItem->GetEquipmentItemClass().LoadSynchronous(), InventoryItem->GetCount()))
+		if (CharacterEquipmentComponent->AddEquipmentItemByClass(InventoryItem->GetEquipmentItemClass().LoadSynchronous(), InventoryItem->GetCount()))
 		{
 			if (IsValid(InventorySlot))
 			{
-				CharacterInventoryComponent->RemoveInventoryItem(InventorySlot, InventoryItem->GetCount());
+				CharacterInventoryComponent->RemoveInventoryItemBySlot(InventorySlot, InventoryItem->GetCount());
 			}
 			else
 			{
-				CharacterInventoryComponent->RemoveInventoryItem(InventoryItem->GetInventoryItemType(), InventoryItem->GetCount());
+				CharacterInventoryComponent->RemoveInventoryItemByType(InventoryItem->GetInventoryItemType(), InventoryItem->GetCount());
 			}
 		}
 	}
@@ -626,7 +629,7 @@ void AXyzBaseCharacter::Server_UseItem_Implementation(UInventoryItem* InventoryI
 
 void AXyzBaseCharacter::Server_AddEquipmentItem_Implementation(EInventoryItemType ItemType, int32 Amount/* = 1*/, int32 EquipmentSlotIndex/* = -1*/)
 {
-	if (!CharacterEquipmentComponent->AddEquipmentItem(ItemType, Amount, EquipmentSlotIndex) && !CharacterInventoryComponent->AddInventoryItem(ItemType, Amount))
+	if (!CharacterEquipmentComponent->AddEquipmentItemByType(ItemType, Amount, EquipmentSlotIndex) && !CharacterInventoryComponent->AddInventoryItem(ItemType, Amount))
 	{
 		DropItem(ItemType, Amount);
 	}
@@ -634,7 +637,7 @@ void AXyzBaseCharacter::Server_AddEquipmentItem_Implementation(EInventoryItemTyp
 
 void AXyzBaseCharacter::Server_RemoveEquipmentItem_Implementation(int32 EquipmentSlotIndex)
 {
-	const AEquipmentItem* EquippedItem = CharacterEquipmentComponent->GetEquippedItem(EquipmentSlotIndex);
+	const AEquipmentItem* EquippedItem = CharacterEquipmentComponent->GetEquipmentItemInSlot(EquipmentSlotIndex);
 	if (IsValid(EquippedItem) && IsValid(EquippedItem->GetLinkedInventoryItem()) && CharacterEquipmentComponent->RemoveEquipmentItem(EquipmentSlotIndex))
 	{
 		const UInventoryItem* InventoryItem = EquippedItem->GetLinkedInventoryItem();
@@ -685,7 +688,7 @@ void AXyzBaseCharacter::Multicast_InteractWithObject_Implementation(UObject* Int
 	}
 }
 
-void AXyzBaseCharacter::LineTraceInteractableObject()
+void AXyzBaseCharacter::LineTraceInteractiveObject()
 {
 	if (!IsLocallyControlled())
 	{
@@ -697,7 +700,7 @@ void AXyzBaseCharacter::LineTraceInteractableObject()
 	GetController()->GetPlayerViewPoint(ViewPointLocation, ViewPointRotation);
 
 	FHitResult HitResult;
-	FVector EndLocation = ViewPointLocation + ViewPointRotation.Vector() * InteractiveObjectRange;
+	FVector EndLocation = ViewPointLocation + ViewPointRotation.Vector() * InteractiveObjectDetectionRange;
 	GetWorld()->LineTraceSingleByChannel(HitResult, ViewPointLocation, EndLocation, ECC_Visibility);
 
 	if (CurrentInteractableObject != HitResult.GetActor())
@@ -720,48 +723,48 @@ void AXyzBaseCharacter::LineTraceInteractableObject()
 
 #pragma region INVERSE KINEMATICS
 
-float AXyzBaseCharacter::GetIKLeftFootOffset() const
+float AXyzBaseCharacter::GetIKLeftFootOffsetZ() const
 {
 	return IKLeftFootOffset;
 }
 
-float AXyzBaseCharacter::GetIKRightFootOffset() const
+float AXyzBaseCharacter::GetIKRightFootOffsetZ() const
 {
 	return IKRightFootOffset;
 }
 
-float AXyzBaseCharacter::GetIKPelvisOffset() const
+float AXyzBaseCharacter::GetIKPelvisOffsetZ() const
 {
 	return IKPelvisOffset;
 }
 
 void AXyzBaseCharacter::UpdateIKSettings(float DeltaSeconds)
 {
-	IKLeftFootOffset = FMath::FInterpTo(IKLeftFootOffset, GetIKOffsetForFootSocket(LeftFootSocketName), DeltaSeconds, IKInterpSpeed);
-	IKRightFootOffset = FMath::FInterpTo(IKRightFootOffset, GetIKOffsetForFootSocket(RightFootSocketName), DeltaSeconds, IKInterpSpeed);
-	IKPelvisOffset = FMath::FInterpTo(IKPelvisOffset, GetIKOffsetForPelvisSocket(), DeltaSeconds, IKInterpSpeed);
+	IKLeftFootOffset = FMath::FInterpTo(IKLeftFootOffset, GetIKOffsetForFootSocketZ(LeftFootSocketName), DeltaSeconds, IKInterpSpeed);
+	IKRightFootOffset = FMath::FInterpTo(IKRightFootOffset, GetIKOffsetForFootSocketZ(RightFootSocketName), DeltaSeconds, IKInterpSpeed);
+	IKPelvisOffset = FMath::FInterpTo(IKPelvisOffset, GetIKOffsetForPelvisSocketZ(), DeltaSeconds, IKInterpSpeed);
 }
 
-float AXyzBaseCharacter::GetIKOffsetForFootSocket(FName SocketName) const
+float AXyzBaseCharacter::GetIKOffsetForFootSocketZ(FName SocketName) const
 {
 	FVector SocketLocation = GetMesh()->GetSocketLocation(SocketName);
 	FVector TraceStart(SocketLocation.X, SocketLocation.Y, GetActorLocation().Z);
 	FVector CharacterBottomLocation = GetActorLocation();
 	CharacterBottomLocation.Z -= GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FVector TraceEnd(SocketLocation.X, SocketLocation.Y, CharacterBottomLocation.Z - MaxFeetIKOffset);
+	FVector TraceEnd(SocketLocation.X, SocketLocation.Y, CharacterBottomLocation.Z - MaxFeetIKOffsetZ);
 
 	FHitResult HitResult;
 	ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(ECC_Visibility);
 	FVector FootBoxSize(10.f, 1.f, 5.f);
 	if (UKismetSystemLibrary::BoxTraceSingle(GetWorld(), TraceStart, TraceEnd, FootBoxSize, GetMesh()->GetSocketRotation(SocketName), TraceType, true, TArray<AActor*>(), EDrawDebugTrace::None, HitResult, true))
 	{
-		return FMath::Clamp(HitResult.Location.Z - CharacterBottomLocation.Z, -MaxFeetIKOffset, 0.f);
+		return FMath::Clamp(HitResult.Location.Z - CharacterBottomLocation.Z, -MaxFeetIKOffsetZ, 0.f);
 	}
 
 	return 0.f;
 }
 
-float AXyzBaseCharacter::GetIKOffsetForPelvisSocket() const
+float AXyzBaseCharacter::GetIKOffsetForPelvisSocketZ() const
 {
 	return FMath::Min(IKLeftFootOffset, IKRightFootOffset);
 }
@@ -1223,7 +1226,7 @@ bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
 	{
 		FHitResult DownwardHitResult;
 		FCollisionShape DownwardCollisionShape = FCollisionShape::MakeSphere(CachedCollisionCapsuleScaledRadius);
-		FVector DownwardStartLocation = ForwardHitResult.ImpactPoint - ForwardHitResult.ImpactNormal * MantlingDepth;
+		FVector DownwardStartLocation = ForwardHitResult.ImpactPoint - ForwardHitResult.ImpactNormal * MantlingDepthZ;
 		DownwardStartLocation.Z = CharacterBottom.Z + HighMantleSettings.MaxHeight + LedgeGeometryTolerance;
 		FVector DownwardEndLocation = DownwardStartLocation;
 		DownwardEndLocation.Z = CharacterBottom.Z + LowMantleSettings.MinHeight - LedgeGeometryTolerance;
@@ -1545,18 +1548,6 @@ bool AXyzBaseCharacter::IsOutOfStamina() const
 	return AbilitySystemComponent->IsAbilityActiveRemote(EGameplayAbility::OutOfStamina);
 }
 
-void AXyzBaseCharacter::StartOutOfStaminaInternal()
-{
-	CharacterEquipmentComponent->UnequipCurrentItem();
-	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, true);
-}
-
-void AXyzBaseCharacter::StopOutOfStaminaInternal()
-{
-	EquipItemFromCurrentSlot();
-	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, false);
-}
-
 void AXyzBaseCharacter::OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
 	AttributeSet->AddHealth(-Damage);
@@ -1583,6 +1574,18 @@ void AXyzBaseCharacter::OnDeath(bool bShouldPlayAnimMontage)
 void AXyzBaseCharacter::OnOutOfStamina(bool bIsOutOfStamina) const
 {
 	AbilitySystemComponent->ActivateAbility(EGameplayAbility::OutOfStamina, bIsOutOfStamina);
+}
+
+void AXyzBaseCharacter::StartOutOfStaminaInternal()
+{
+	CharacterEquipmentComponent->UnequipCurrentItem();
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, true);
+}
+
+void AXyzBaseCharacter::StopOutOfStaminaInternal()
+{
+	EquipItemFromCurrentSlot();
+	BaseCharacterMovementComponent->SetMovementFlag((uint32)EGameplayAbility::OutOfStamina, false);
 }
 
 void AXyzBaseCharacter::OnOutOfOxygen(bool bIsOutOfOxygen) const

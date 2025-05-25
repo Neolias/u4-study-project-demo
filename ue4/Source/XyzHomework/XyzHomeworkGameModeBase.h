@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,9 +6,6 @@
 #include "GameFramework/GameModeBase.h"
 #include "XyzHomeworkGameModeBase.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class XYZHOMEWORK_API AXyzHomeworkGameModeBase : public AGameModeBase
 {

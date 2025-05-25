@@ -1,11 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "AICharacterSpawner.generated.h"
-
 
 UCLASS()
 class XYZHOMEWORK_API AAICharacterSpawner : public AActor
@@ -29,13 +28,16 @@ protected:
 	bool bSpawnOnce = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Category = "AISpawner"))
 	TSoftClassPtr<class AAICharacter> AICharacterClass;
+	/** Interactable actor that acts as a trigger for spawning AI. */
 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, meta = (Category = "AISpawner", ToolTip = "IInteractable object"))
 	AActor* SpawnTriggerActor;
-	
+
 private:
+	/** Binds the SpawnAI() function to a new delegate received from 'SpawnTrigger'. */
 	void UpdateSpawnTrigger();
 	void UnsubscribeFromTrigger() const;
 
+	/** Cached interface of an interactable actor that acts as a trigger for spawning AI. */
 	TScriptInterface<class IInteractable> SpawnTrigger;
 	bool bCanSpawn = true;
 	FDelegateHandle OnSpawnDelegate;

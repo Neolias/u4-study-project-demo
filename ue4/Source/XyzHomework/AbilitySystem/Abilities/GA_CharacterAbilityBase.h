@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -8,9 +8,8 @@
 #include "GA_CharacterAbilityBase.generated.h"
 
 class AXyzBaseCharacter;
-/**
- * 
- */
+
+/** Base class of all character gameplay abilities. Capable of executing the actual game logic of abilities via AXyzBaseCharacter::ExecuteGameplayAbilityCallbackInternal(). */
 UCLASS(Abstract)
 class XYZHOMEWORK_API UGA_CharacterAbilityBase : public UGameplayAbility
 {

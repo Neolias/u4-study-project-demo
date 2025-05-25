@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -31,13 +31,16 @@ protected:
 	UStaticMeshComponent* TriggerMesh;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UBoxComponent* TriggerCollision;
+	/** Platforms that will be invoked when pawns interact with this trigger. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TArray<ABasePlatform*> ControlledPlatforms;
 
 private:
 	void OnSetIsTriggered() const;
+	/** Adds a new actor to the list of 'OverlappedPawns'. */
 	UFUNCTION()
 	void RegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	/** Removes an actor from the list of 'OverlappedPawns'. */
 	UFUNCTION()
 	void UnRegisterPawns(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 

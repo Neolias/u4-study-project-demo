@@ -1,3 +1,5 @@
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
+
 #pragma once
 
 #define ECC_Climbing ECC_GameTraceChannel1

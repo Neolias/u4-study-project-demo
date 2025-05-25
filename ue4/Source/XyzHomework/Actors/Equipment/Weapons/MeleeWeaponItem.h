@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -9,9 +9,7 @@
 
 class UMeleeHitRegistrationComponent;
 
-/**
- *
- */
+/** Base class of all melee weapon items, such as knives. */
 UCLASS()
 class XYZHOMEWORK_API AMeleeWeaponItem : public AEquipmentItem
 {
@@ -22,6 +20,10 @@ public:
 	FOnAttackActivated OnAttackActivatedEvent;
 
 	AMeleeWeaponItem();
+	/**
+	 * Starts a melee attack based on 'EMeleeAttackType'. Plays an attack anim montage.
+	 * @param AttackType ID of the attack description stored in the 'Attacks' list.
+	 */
 	void StartAttack(EMeleeAttackType AttackType);
 	void EnableHitRegistration(bool bIsHitRegistrationEnabled);
 
@@ -38,6 +40,7 @@ private:
 	void EndAttack() const;
 
 	FMeleeAttackDescription* CurrentAttackDescription;
+	/** Hit components with collisions. Hit events are processed in ProcessHit(). */
 	UPROPERTY()
 	TArray<UMeleeHitRegistrationComponent*> HitRegistrationComponents;
 	UPROPERTY()

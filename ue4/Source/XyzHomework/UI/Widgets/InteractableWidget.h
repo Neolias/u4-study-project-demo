@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,14 +6,12 @@
 #include "Blueprint/UserWidget.h"
 #include "InteractableWidget.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class XYZHOMEWORK_API UInteractableWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
+	/** Updates the 'interaction key' text of the widget. */
 	void SetKeyName(FName KeyName) const;
 
 protected:

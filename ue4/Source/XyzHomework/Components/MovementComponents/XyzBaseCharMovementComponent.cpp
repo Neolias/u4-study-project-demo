@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Components/MovementComponents/XyzBaseCharMovementComponent.h"
 
@@ -414,6 +414,7 @@ FRotator UXyzBaseCharMovementComponent::ComputeOrientToMovementRotation(const FR
 		Result = Acceleration.GetSafeNormal().Rotation();
 	}
 
+	// Disable pitch rotation produced by movement while swimming
 	if (IsSwimming())
 	{
 		Result.Pitch = BaseCharacterOwner->GetControlRotation().Pitch;
@@ -421,7 +422,7 @@ FRotator UXyzBaseCharMovementComponent::ComputeOrientToMovementRotation(const FR
 	return Result;
 }
 
-void UXyzBaseCharMovementComponent::UpdateSwimmingCapsuleSize()
+void UXyzBaseCharMovementComponent::UpdateSwimmingCapsuleSize() const
 {
 	if (IsSwimming())
 	{

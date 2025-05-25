@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -9,9 +9,8 @@
 
 class UAIPatrollingComponent;
 class UBehaviorTree;
-/**
- * 
- */
+
+/** Base class of all humanoid AI characters. Owns the patrolling component. */
 UCLASS(Blueprintable)
 class XYZHOMEWORK_API AAICharacter : public AXyzBaseCharacter
 {

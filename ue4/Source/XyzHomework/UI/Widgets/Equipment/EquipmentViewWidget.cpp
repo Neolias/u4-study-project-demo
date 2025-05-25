@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "EquipmentViewWidget.h"
 
@@ -38,7 +38,7 @@ void UEquipmentViewWidget::UpdateSlot(int32 SlotIndex) const
 			return;
 		}
 
-		WidgetToUpdate->InitializeSlot(BaseCharacter->GetCharacterEquipmentComponent()->GetEquippedItem(SlotIndex), SlotIndex);
+		WidgetToUpdate->InitializeSlot(BaseCharacter->GetCharacterEquipmentComponent()->GetEquipmentItemInSlot(SlotIndex), SlotIndex);
 		WidgetToUpdate->UpdateView();
 	}
 }

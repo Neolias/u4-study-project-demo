@@ -1,10 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
 #include "Components/TimelineComponent.h"
+#include "GameFramework/Actor.h"
 #include "BasePlatform.generated.h"
 
 UENUM(BlueprintType)
@@ -16,9 +16,7 @@ enum class EPlatformBehavior : uint8
 	Max UMETA(Hidden)
 };
 
-/**
- *
- */
+/** Base class of all movable platforms. */
 UCLASS()
 class XYZHOMEWORK_API ABasePlatform : public AActor
 {

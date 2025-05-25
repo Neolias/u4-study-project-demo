@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -57,6 +57,7 @@ protected:
 	float BarrelDiameter = 10.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI Turret|Geometry", meta = (ClampMin = 1.f, UIMin = 1.f))
 	float BarrelLength = 40.f;
+	/** Team this actor belongs to. Affects this AI's hostility towards other characters. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Turret")
 	ETeam Team = ETeam::Enemy;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Turret")

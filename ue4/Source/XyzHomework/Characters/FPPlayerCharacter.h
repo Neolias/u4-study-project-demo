@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,9 +6,7 @@
 #include "Characters/PlayerCharacter.h"
 #include "FPPlayerCharacter.generated.h"
 
-/**
- * DEPRECATED
- */
+/** DEPRECATED. First-person character class that mainly manages the first-person camera. */
 UCLASS()
 class XYZHOMEWORK_API AFPPlayerCharacter : public APlayerCharacter
 {
@@ -26,9 +24,7 @@ protected:
 
 private:
 	bool IsFPMontagePlaying() const;
-
-	FRotator ForcedTargetControlRotation = FRotator::ZeroRotator;
-
+	
 #pragma region CAMERA
 
 protected:
@@ -37,7 +33,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera")
 	FName CameraSocket = FName("CameraSocket");
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float AlignmentBlendSpeed = 10.f;
+	float CameraAlignmentBlendSpeed = 10.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
 	float LadderCameraMinPitch = -60.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|FP Player|Camera", meta = (UIMin = -89.9f, UIMax = 89.9f))
@@ -66,6 +62,8 @@ private:
 	void StartWallRunCameraTilt();
 	void EndWallRunCameraTilt();
 
+	/** Forced camera rotation that ignores the camera socket rotation during animations. */
+	FRotator ForcedTargetControlRotation = FRotator::ZeroRotator;
 	FTimeline WallRunCameraTiltTimeline;
 	bool bIsForcedToAlignFPCamera = false;
 	float AnimMontageCameraBlendSpeed = 50.f;

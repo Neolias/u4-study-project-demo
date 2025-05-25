@@ -1,10 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "AI/BTTasks/BTTask_UsePrimaryMeleeAttack.h"
 
 #include "AIController.h"
 #include "XyzHomeworkTypes.h"
-#include "Actors/Equipment/Weapons/MeleeWeaponItem.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Characters/XyzBaseCharacter.h"
 #include "Components/CharacterComponents/CharacterEquipmentComponent.h"

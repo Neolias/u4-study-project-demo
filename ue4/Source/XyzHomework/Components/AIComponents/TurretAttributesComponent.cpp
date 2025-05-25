@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Components/AIComponents/TurretAttributesComponent.h"
 
@@ -74,11 +74,11 @@ void UTurretAttributesComponent::DrawDebugAttributes() const
 	FVector CameraLocation = CameraManager->GetCameraLocation();
 	FVector TurretLocation = TurretOwner->GetActorLocation();
 	float DistanceFromCamera = FVector::Dist(TurretLocation, CameraLocation);
-	if (DistanceFromCamera > AttributesVisibilityRange)
+	if (DistanceFromCamera > DebugAttributesVisibilityRange)
 	{
 		return;
 	}
-	float AttributeFontScale = FMath::Clamp(DefaultPlayerDistanceFromCamera / DistanceFromCamera, 0.5f, 1.f);
+	float AttributeFontScale = FMath::Clamp(DefaultDebugDistanceFromCamera / DistanceFromCamera, 0.5f, 1.f);
 	float ScaledAttributeFontSize = AttributesFontSize * AttributeFontScale;
 	FRotator CameraRotation = CameraManager->GetCameraRotation();
 	CameraRotation.Pitch = 0.f;

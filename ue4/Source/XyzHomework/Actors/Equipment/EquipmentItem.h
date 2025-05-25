@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -11,6 +11,7 @@
 class UInventoryItem;
 class AXyzBaseCharacter;
 
+/** Base class of all equipment items, such as weapons and grenades, managed by the equipment component. */
 UCLASS()
 class XYZHOMEWORK_API AEquipmentItem : public AActor, public ISaveSubsystemInterface
 {
@@ -33,9 +34,13 @@ public:
 	bool CanAimWithThisItem() const { return bCanAimWithThisItem; }
 	float GetAimingWalkSpeed() const { return AimingWalkSpeed; }
 	float GetAimingFOV() const { return AimingFOV; }
+	/** Get a linked inventory item that represents this equipment item in the inventory. */
 	UInventoryItem* GetLinkedInventoryItem() const { return LinkedInventoryItem; }
+	/** Links this equipment item with an inventory item that represents it in the inventory. */
 	void SetLinkedInventoryItem(UInventoryItem* InventoryItem);
+	/** Return a list of slots in which this item can be placed in. */
 	const TArray<EEquipmentItemSlot>& GetCompatibleEquipmentSlots() const { return CompatibleEquipmentSlots; }
+	/** Can this item be stored in the 'EquipmentSlot' slot. */
 	bool IsEquipmentSlotCompatible(EEquipmentItemSlot EquipmentSlot) const;
 
 	//@ SaveSubsystemInterface
@@ -43,14 +48,18 @@ public:
 	//~ SaveSubsystemInterface
 
 protected:
+	/** Socket on the character mesh to which this item will be attached to when equipped. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
 	FName EquippedSocketName = NAME_None;
+	/** Socket on the character mesh to which this item will be attached to when unequipped. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
 	FName UnequippedSocketName = NAME_None;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
+	
 	EEquipmentItemType EquipmentItemType = EEquipmentItemType::None;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
 	EInventoryItemType InventoryItemType = EInventoryItemType::None;
+	/** List of slots in which this item can be placed in. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
 	TArray<EEquipmentItemSlot> CompatibleEquipmentSlots;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item")
@@ -68,6 +77,7 @@ protected:
 
 	TWeakObjectPtr<AXyzBaseCharacter> CachedBaseCharacter;
 	bool bIsEquipped = false;
+	/** Inventory item that represents this equipment item in the inventory. */
 	UPROPERTY(Replicated)
 	UInventoryItem* LinkedInventoryItem;
 };

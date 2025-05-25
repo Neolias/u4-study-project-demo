@@ -1,16 +1,16 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Components/CharacterComponents/CharacterInventoryComponent.h"
 #include "InventoryViewWidget.generated.h"
 
+class UGridPanel;
 class UInventorySlot;
 class UInventorySlotWidget;
-class UGridPanel;
 
+/** Widget visualizing the character inventory. */
 UCLASS()
 class XYZHOMEWORK_API UInventoryViewWidget : public UUserWidget
 {
@@ -21,12 +21,13 @@ public:
 
 protected:
 	void AddSlotToView(UInventorySlot* SlotToAdd);
-	
+
+	/** All inventory slot widgets owned by this widget. */
 	UPROPERTY(meta = (BindWidget))
 	UGridPanel* ItemSlots;
-	UPROPERTY(EditDefaultsOnly, Category = "ItemSlots")
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory View Widget")
 	TSoftClassPtr<UInventorySlotWidget> InventorySlotWidgetClass;
-	UPROPERTY(EditDefaultsOnly, Category = "ItemSlots")
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory View Widget")
 	int32 ColumnCount = 4;
 
 	bool bIsInitialized = false;

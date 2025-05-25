@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -8,9 +8,6 @@
 
 class ATurret;
 
-/**
- *
- */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class XYZHOMEWORK_API UTurretAttributesComponent : public UActorComponent
 {
@@ -29,15 +26,16 @@ public:
 	void OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 
 protected:
-	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float DefaultPlayerDistanceFromCamera = 175.f;
-	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float AttributesVisibilityRange = 1000.f;
-	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component", meta = (ClampMin = 0.f, UIMin = 0.f))
+	/** Distance at which the attributes debug text font scale is equal to 1. */
+	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component|Debug", meta = (ClampMin = 0.f, UIMin = 0.f))
+	float DefaultDebugDistanceFromCamera = 175.f;
+	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component|Debug", meta = (ClampMin = 0.f, UIMin = 0.f))
+	float DebugAttributesVisibilityRange = 1000.f;
+	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component|Debug", meta = (ClampMin = 0.f, UIMin = 0.f))
 	float AttributesFontSize = 1.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Turret|Attributes Component")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI Turret|Attributes Component|Debug")
 	float MaxHealth = 100.f;
-	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component")
+	UPROPERTY(EditAnywhere, Category = "AI Turret|Attributes Component|Debug")
 	FVector HealthBarOffset = FVector(0.f, -10.f, 35.f);
 
 private:

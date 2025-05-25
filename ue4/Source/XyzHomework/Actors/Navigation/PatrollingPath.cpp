@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Actors/Navigation/PatrollingPath.h"

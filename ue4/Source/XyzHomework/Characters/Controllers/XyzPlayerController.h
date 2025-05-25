@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -7,9 +7,7 @@
 #include "XyzPlayerController.generated.h"
 
 class UPlayerHUDWidget;
-/**
- *
- */
+
 UCLASS()
 class XYZHOMEWORK_API AXyzPlayerController : public APlayerController
 {
@@ -20,7 +18,7 @@ public:
 	virtual void OnUnPossess() override;
 	virtual void Tick(float DeltaTime) override;
 	bool IgnoresFPCameraPitch() const;
-	void ShouldIgnoreFPCameraPitch(bool bIgnoreFPCameraPitch_In) { bIgnoresFPCameraPitch = bIgnoreFPCameraPitch_In; }
+	void SetIgnoreFPCameraPitch(bool bIgnoreFPCameraPitch_In) { bIgnoresFPCameraPitch = bIgnoreFPCameraPitch_In; }
 
 protected:
 	virtual void SetupInputComponent() override;
@@ -33,8 +31,11 @@ private:
 	void CreateAndInitializeHUDWidgets();
 	void RemoveHUDWidgets() const;
 	void ToggleMainMenu();
+	/** Finds an input key assigned to this 'ActionName' action and shows it in the player's HUD. */
 	void OnInteractableObjectFound(FName ActionName);
 
+#pragma region INPUT ACTIONS
+	
 	void MoveForward(float Value);
 	void MoveRight(float Value);
 	void Turn(float Value);
@@ -73,6 +74,8 @@ private:
 	void QuickSaveGame();
 	void QuickLoadGame();
 	void TogglePlayerMouseInput();
+	void QuitGame();
+#pragma endregion
 
 	void TurnAtRate(float Value);
 	void LookUpAtRate(float Value);

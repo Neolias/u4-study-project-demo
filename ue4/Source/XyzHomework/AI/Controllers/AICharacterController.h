@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -6,9 +6,7 @@
 #include "AI/Controllers/XyzAIController.h"
 #include "AICharacterController.generated.h"
 
-/**
- * 
- */
+/** AI controlled used with all humanoid AI characters. */
 UCLASS()
 class XYZHOMEWORK_API AAICharacterController : public AXyzAIController
 {
@@ -24,6 +22,7 @@ protected:
 	virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
 
 private:
+	/** Finds a new waypoint and sets its location to a blackboard value. */
 	void TryMoveToNextWayPoint();
 
 	TWeakObjectPtr<class AAICharacter> CachedAICharacter;

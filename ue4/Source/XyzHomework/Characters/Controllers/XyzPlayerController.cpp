@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "Characters/Controllers/XyzPlayerController.h"
 
@@ -56,7 +56,7 @@ void AXyzPlayerController::OnUnPossess()
 void AXyzPlayerController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	
+
 	if (USignificanceManager* SignificanceManager = FSignificanceManagerModule::Get(GetWorld()))
 	{
 		FVector ViewLocation;
@@ -121,6 +121,7 @@ void AXyzPlayerController::SetupInputComponent()
 	InputComponent->BindAction("QuickSaveGame", EInputEvent::IE_Pressed, this, &AXyzPlayerController::QuickSaveGame);
 	InputComponent->BindAction("QuickLoadGame", EInputEvent::IE_Pressed, this, &AXyzPlayerController::QuickLoadGame);
 	InputComponent->BindAction("TogglePlayerMouseInput", EInputEvent::IE_Pressed, this, &AXyzPlayerController::TogglePlayerMouseInput);
+	InputComponent->BindAction("QuitGame", EInputEvent::IE_Pressed, this, &AXyzPlayerController::QuitGame);
 
 	InputComponent->BindAxis("TurnAtRate", this, &AXyzPlayerController::TurnAtRate);
 	InputComponent->BindAxis("LookUpAtRate", this, &AXyzPlayerController::LookUpAtRate);
@@ -227,7 +228,7 @@ void AXyzPlayerController::RemoveHUDWidgets() const
 
 void AXyzPlayerController::ToggleMainMenu()
 {
-	if (!IsValid(MainMenuWidget) || !IsValid(PlayerHUDWidget))
+	if (IsNetMode(NM_Standalone) || !IsValid(MainMenuWidget) || !IsValid(PlayerHUDWidget))
 	{
 		return;
 	}
@@ -266,6 +267,8 @@ void AXyzPlayerController::OnInteractableObjectFound(FName ActionName)
 	}
 	PlayerHUDWidget->ShowInteractableKey(HasAnyKeys);
 }
+
+#pragma region INPUT ACTIONS
 
 void AXyzPlayerController::MoveForward(float Value)
 {
@@ -611,6 +614,12 @@ void AXyzPlayerController::TogglePlayerMouseInput()
 		BaseCharacter->TogglePlayerMouseInput(this);
 	}
 }
+
+void AXyzPlayerController::QuitGame()
+{
+	UKismetSystemLibrary::QuitGame(GetWorld(), this, EQuitPreference::Quit, false);
+}
+#pragma endregion
 
 void AXyzPlayerController::TurnAtRate(float Value)
 {

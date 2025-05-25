@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -11,6 +11,7 @@ class UTextBlock;
 class UInventoryItem;
 class UImage;
 
+/** Widget associated with a slot in the character inventory. */
 UCLASS()
 class XYZHOMEWORK_API UInventorySlotWidget : public UUserWidget
 {
@@ -21,6 +22,7 @@ public:
 	void UpdateView();
 	void UpdateItemIconAndCount(UInventoryItem* NewItemData);
 	void SetItemIcon(UTexture2D* Icon) const;
+	/** Links this slot widget with a new inventory item and updates the previous inventory slot if needed. */
 	void SetLinkedSlotItem(UInventoryItem* NewItem);
 	UInventorySlot* GetLinkedSlot() const { return LinkedSlot.Get(); }
 
@@ -37,7 +39,8 @@ protected:
 
 private:
 	bool SwapSlotItems(UInventoryItem* OtherSlotItem);
-	
+
+	/** Inventory slot that is associated with this slot widget. */
 	TWeakObjectPtr<UInventorySlot> LinkedSlot;
 	TWeakObjectPtr<UInventoryItem> CachedInventoryItem;
 };

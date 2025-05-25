@@ -7,9 +7,6 @@
 #include "Interfaces/OnlineSessionInterface.h"
 #include "XyzGameInstance.generated.h"
 
-/**
- *
- */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnMatchFound, bool)
 
 UCLASS()

@@ -1,5 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "HealthPackInventoryItem.h"
 
@@ -14,7 +13,7 @@ bool UHealthPackInventoryItem::Consume(APawn* Pawn)
 	const AXyzBaseCharacter* BaseCharacter = Cast<AXyzBaseCharacter>(Pawn);
 	if (IsValid(BaseCharacter))
 	{
-		if (BaseCharacter->GetCharacterInventoryComponent()->RemoveInventoryItem(Description.InventoryItemType, 1))
+		if (BaseCharacter->GetCharacterInventoryComponent()->RemoveInventoryItemByType(Description.InventoryItemType, 1))
 		{
 			BaseCharacter->GetCharacterAttributes()->AddHealth(HealthRestoreAmount);
 			return true;

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #include "CharacterInventoryComponent.h"
 
@@ -313,7 +313,7 @@ bool UCharacterInventoryComponent::FillEmptySlots(EInventoryItemType ItemType, i
 	return Remainder == 0;
 }
 
-int32 UCharacterInventoryComponent::RemoveInventoryItem(EInventoryItemType ItemType, int32 Amount)
+int32 UCharacterInventoryComponent::RemoveInventoryItemByType(EInventoryItemType ItemType, int32 Amount)
 {
 	if (Amount < 1)
 	{
@@ -340,7 +340,7 @@ int32 UCharacterInventoryComponent::RemoveInventoryItem(EInventoryItemType ItemT
 	int32 Remainder = Amount;
 	for (UInventorySlot* Slot : CompatibleItemSlots)
 	{
-		Remainder -= RemoveInventoryItem(Slot, Remainder);
+		Remainder -= RemoveInventoryItemBySlot(Slot, Remainder);
 		if (Remainder < 1)
 		{
 			break;
@@ -350,17 +350,17 @@ int32 UCharacterInventoryComponent::RemoveInventoryItem(EInventoryItemType ItemT
 	return FMath::Clamp(Amount - Remainder, 0, Amount);
 }
 
-int32 UCharacterInventoryComponent::RemoveInventoryItem(int32 SlotIndex, int32 Amount)
+int32 UCharacterInventoryComponent::RemoveInventoryItemByIndex(int32 SlotIndex, int32 Amount)
 {
 	if (SlotIndex >= 0 && SlotIndex < ItemSlots.Num())
 	{
-		return RemoveInventoryItem(ItemSlots[SlotIndex], Amount);
+		return RemoveInventoryItemBySlot(ItemSlots[SlotIndex], Amount);
 	}
 
 	return 0;
 }
 
-int32 UCharacterInventoryComponent::RemoveInventoryItem(UInventorySlot* Slot, int32 Amount)
+int32 UCharacterInventoryComponent::RemoveInventoryItemBySlot(UInventorySlot* Slot, int32 Amount)
 {
 	if (!Slot)
 	{
@@ -412,7 +412,7 @@ int32 UCharacterInventoryComponent::RemoveAmmoItem(EWeaponAmmoType AmmoType, int
 
 	if (const FInventoryTableRow* ItemData = LoadItemDataFromDataTable(AmmoType))
 	{
-		return RemoveInventoryItem(ItemData->InventoryItemDescription.InventoryItemType, Amount);
+		return RemoveInventoryItemByType(ItemData->InventoryItemDescription.InventoryItemType, Amount);
 	}
 
 	return Amount; // If ammo data is not found, returns requested amount to let ammo reloading proceed

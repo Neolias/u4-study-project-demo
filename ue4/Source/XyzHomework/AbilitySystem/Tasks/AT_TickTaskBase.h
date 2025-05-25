@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -7,9 +7,8 @@
 #include "AT_TickTaskBase.generated.h"
 
 class AXyzBaseCharacter;
-/**
- * 
- */
+
+/** Base class of ticking gameplay tasks. */
 UCLASS(Abstract)
 class XYZHOMEWORK_API UAT_TickTaskBase : public UAbilityTask
 {

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2025 https://github.com/Neolias/ue4-study-project-demo/blob/main/LICENSE
 
 #pragma once
 
@@ -31,6 +31,7 @@ struct FShotInfo
 	FVector_NetQuantizeNormal Direction;
 };
 
+/** Base class of all ranged weapon items, such as pistols, rifles, and shotguns. */
 UCLASS()
 class XYZHOMEWORK_API ARangedWeaponItem : public AEquipmentItem
 {
@@ -68,7 +69,9 @@ public:
 	bool CanFire() const;
 	void StartFire();
 	void StopFire();
+	/** Shoots one bullet or projectile in the direction the character is currently looking in. Calls OnMakeOneShot() to execute the actual shot logic. */
 	void MakeOneShot();
+	/** Calculates a random shot direction based on the bullet spread. */
 	FRotator GetShotDirection(FRotator ViewPointRotation) const;
 	FTransform GetForeGripSocketTransform() const;
 	float GetReloadingWalkSpeed() const { return ReloadingWalkSpeed; }
@@ -83,6 +86,7 @@ public:
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon", meta = (ClampMin = 0, UIMin = 0))
 	int32 DefaultWeaponModeIndex = 0;
+	/** Description of bullets, magazine, fire rate, effects, etc. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment Item|Ranged Weapon")
 	TArray<FWeaponModeParameters> WeaponModes;
 	UPROPERTY(EditAnywhere, Category = "Equipment Item|Ranged Weapon", meta = (ClampMin = 0.f, UIMin = 0.f))
@@ -104,6 +108,9 @@ protected:
 
 private:
 	void OnAmmoChanged();
+	/** Actual shooting logic.
+	 * @param ShotInfoArray List of FShotInfo structs describing the trajectory of each bullet.
+	 */
 	void OnMakeOneShot(const TArray<FShotInfo>& ShotInfoArray);
 	void OnShotEnd();
 	UFUNCTION(Server, Reliable)
@@ -121,6 +128,7 @@ private:
 	UFUNCTION()
 	void OnRep_CurrentWeaponModeIndex();
 	FWeaponModeParameters* CurrentWeaponMode;
+	/** Amount of ammo currently loaded in the magazine for each weapon mode. */
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponAmmo, SaveGame)
 	TArray<int32> CurrentWeaponAmmo;
 	UFUNCTION()
