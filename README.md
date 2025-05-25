@@ -54,7 +54,7 @@ Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.co
 *Other:*  
 **L:** Reload Current Level (Only in a standalone game)  
 **T:** Quick Save (Only in a standalone game)  
-**Y:** Quick Load (Only in a standalone game)
+**Y:** Quick Load (Only in a standalone game)  
 **ESC:** Quit the Game
 
 ## Console Commands
