@@ -5,12 +5,17 @@
 #include "DrawDebugHelpers.h"
 #include "XyzHomeworkTypes.h"
 #include "AI/Characters/Turret.h"
+
+#if ENABLE_DRAW_DEBUG
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/DebugSubsystem.h"
+#endif
 
 UTurretAttributesComponent::UTurretAttributesComponent()
 {
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
+#if ENABLE_DRAW_DEBUG
+	PrimaryComponentTick.bCanEverTick = true;
+#else
 	PrimaryComponentTick.bCanEverTick = true;
 #endif
 }
@@ -29,9 +34,7 @@ void UTurretAttributesComponent::TickComponent(float DeltaTime, ELevelTick TickT
                                                FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	DrawDebugAttributes();
-#endif
 }
 
 bool UTurretAttributesComponent::IsAlive() const
@@ -61,9 +64,9 @@ void UTurretAttributesComponent::TryTriggerDeath()
 	}
 }
 
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 void UTurretAttributesComponent::DrawDebugAttributes() const
 {
+#if ENABLE_DRAW_DEBUG
 	const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 	if (!DebugSubsystem->IsCategoryEnabled(DebugCategoryAIAttributes))
 	{
@@ -84,5 +87,5 @@ void UTurretAttributesComponent::DrawDebugAttributes() const
 	CameraRotation.Pitch = 0.f;
 	FVector HealthBarLocation = TurretLocation + TurretOwner->GetTurretMeshHeight() * FVector::UpVector + CameraRotation.RotateVector(HealthBarOffset);
 	DrawDebugString(GetWorld(), HealthBarLocation, FString::Printf(TEXT("%.2f"), CurrentHealth), nullptr, FColor::Red, 0.f, true, ScaledAttributeFontSize);
-}
 #endif
+}

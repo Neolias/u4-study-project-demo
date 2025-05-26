@@ -224,6 +224,7 @@ public:
 	void EquipPrimaryItem(bool bForceEquip = false);
 	/** Unequips an item stored in EEquipmentItemSlot::PrimaryItem. */
 	void UnequipPrimaryItem();
+	void UpdatePrimaryItemSlot();
 	bool CanItemBeThrown(AThrowableItem* ThrowableItem);
 	void ThrowItem();
 

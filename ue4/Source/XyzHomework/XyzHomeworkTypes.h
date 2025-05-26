@@ -15,6 +15,7 @@ const FName CollisionProfileRagdoll = FName("Ragdoll");
 
 const FName DebugCategoryCharacterAttributes = FName("CharacterAttributes");
 const FName DebugCategoryAIAttributes = FName("AIAttributes");
+const FName DebugCategoryLedgeDetection = FName("LedgeDetection");
 const FName DebugCategoryRangedWeapon = FName("RangedWeapon");
 const FName DebugCategoryMeleeWeapon = FName("MeleeWeapon");
 

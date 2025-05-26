@@ -294,6 +294,7 @@ public:
 	FVector GetCurrentWallRunDirection() const { return CurrentWallRunDirection; }
 	bool IsWallRunning() const;
 	void StartWallRun(const FHitResult& Hit);
+	void StopWallRun();
 	void DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod DetachFromRunnableWallMethod);
 
 protected:
@@ -314,7 +315,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Base Character|Movement Component|Wall Running")
 	UCurveFloat* WallRunVerticalDisplacementCurve;
 	UPROPERTY(EditAnywhere, Category = "Base Character|Movement Component|Wall Running", meta = (ClampMin = 0.f, UIMin = 0.f))
-	float JumpOffWallRunSpeed = 500.f;
+	float JumpOffWallRunSpeed = 700.f;
 
 private:
 	bool CanWallRunInCurrentState() const;
@@ -323,7 +324,6 @@ private:
 	void GetWallRunSideAndDirection(FVector HitNormal, OUT EWallRunSide& OutSide, OUT FVector& OutDirection) const;
 	void GetUpdatedWallRunDeltaAndRotation(float DeltaTime, const FHitResult& HitResult, OUT FVector& DisplacementDelta, OUT FRotator& UpdatedCharacterRotation) const;
 	bool AttachCharacterToRunnableWall(const FHitResult& Hit);
-	void EndWallRun();
 	bool UpdateWallRunVelocity(FHitResult& HitResult);
 	void PhysWallRun(float DeltaTime, int32 Iterations);
 	

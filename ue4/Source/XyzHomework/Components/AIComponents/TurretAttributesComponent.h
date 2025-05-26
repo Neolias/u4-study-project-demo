@@ -40,10 +40,7 @@ protected:
 
 private:
 	void TryTriggerDeath();
-
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
 	void DrawDebugAttributes() const;
-#endif
 
 	UPROPERTY()
 	ATurret* TurretOwner;

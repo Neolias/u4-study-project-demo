@@ -7,8 +7,11 @@
 #include "NiagaraFunctionLibrary.h"
 #include "XyzHomeworkTypes.h"
 #include "Components/DecalComponent.h"
+
+#if ENABLE_DRAW_DEBUG
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/DebugSubsystem.h"
+#endif
 
 UTurretMuzzleComponent::UTurretMuzzleComponent()
 {
@@ -57,7 +60,7 @@ void UTurretMuzzleComponent::Shoot(AController* Controller) const
 
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, MuzzleLocation, EndLocation, ECC_Bullet))
 	{
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT) && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 		const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 		if (DebugSubsystem->IsCategoryEnabled(DebugCategoryRangedWeapon))
 		{
@@ -90,7 +93,7 @@ FVector UTurretMuzzleComponent::GetShotDirection(FRotator MuzzleRotation) const
 
 void UTurretMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitResult& HitResult) const
 {
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT) && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 	if (DebugSubsystem->IsCategoryEnabled(DebugCategoryRangedWeapon))
 	{

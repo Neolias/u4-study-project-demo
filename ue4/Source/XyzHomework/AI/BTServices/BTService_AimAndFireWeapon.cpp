@@ -39,6 +39,10 @@ void UBTService_AimAndFireWeapon::TickNode(UBehaviorTreeComponent& OwnerComp, ui
 
 		if (bIsInRange && bCanSeeTarget)
 		{
+			if (bIsWeaponFireRequested && !BaseCharacter->IsFiringWeapon())
+			{
+				BaseCharacter->EquipItemFromCurrentSlot();
+			}
 			if (!bIsWeaponFireRequested)
 			{
 				Blackboard->SetValueAsBool(AICharacterBTWeaponFireRequestedName, true);

@@ -54,6 +54,7 @@ private:
 	void ClimbLadderUp(float Value);
 	void UseEnvironmentActor();
 	void JumpOffRunnableWall();
+	void WallRun(float Value);
 	void Slide();
 	void ReloadLevel();
 	void StartWeaponFire();

@@ -128,6 +128,7 @@ void APlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uin
 void APlayerCharacter::MoveForward(float Value)
 {
 	Super::MoveForward(Value);
+	
 	if ((GetCharacterMovement()->IsMovingOnGround() || GetCharacterMovement()->IsFalling()) && !FMath::IsNearlyZero(Value))
 	{
 		FRotator Rotation(0.f, GetControlRotation().Yaw, 0.f);
@@ -138,6 +139,7 @@ void APlayerCharacter::MoveForward(float Value)
 void APlayerCharacter::MoveRight(float Value)
 {
 	Super::MoveRight(Value);
+	
 	if ((GetCharacterMovement()->IsMovingOnGround() || GetCharacterMovement()->IsFalling()) && !FMath::IsNearlyZero(Value))
 	{
 		FRotator Rotation(0.f, GetControlRotation().Yaw, 0.f);
@@ -149,30 +151,35 @@ void APlayerCharacter::MoveRight(float Value)
 void APlayerCharacter::Turn(float Value)
 {
 	Super::Turn(Value);
+	
 	AddControllerYawInput(Value * GetAimTurnModifier());
 }
 
 void APlayerCharacter::LookUp(float Value)
 {
 	Super::LookUp(Value);
+	
 	AddControllerPitchInput(Value * GetAimLookUpModifier());
 }
 
 void APlayerCharacter::TurnAtRate(float Value)
 {
 	Super::Turn(Value);
+	
 	AddControllerYawInput(Value * GetAimTurnModifier() * BaseTurnRate * GetWorld()->GetDeltaSeconds());
 }
 
 void APlayerCharacter::LookUpAtRate(float Value)
 {
 	Super::LookUp(Value);
+	
 	AddControllerPitchInput(Value * GetAimLookUpModifier() * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
 }
 
 void APlayerCharacter::ClimbLadderUp(float Value)
 {
 	Super::ClimbLadderUp(Value);
+	
 	if (BaseCharacterMovementComponent->IsOnLadder() && !FMath::IsNearlyZero(Value))
 	{
 		FVector LadderUpVector = BaseCharacterMovementComponent->GetCurrentLadder()->GetActorUpVector();
@@ -183,6 +190,7 @@ void APlayerCharacter::ClimbLadderUp(float Value)
 void APlayerCharacter::SwimForward(float Value)
 {
 	Super::SwimForward(Value);
+	
 	if (BaseCharacterMovementComponent->IsSwimming() && !FMath::IsNearlyZero(Value))
 	{
 		FRotator Rotation;
@@ -201,6 +209,7 @@ void APlayerCharacter::SwimForward(float Value)
 void APlayerCharacter::SwimRight(float Value)
 {
 	Super::SwimRight(Value);
+	
 	if (BaseCharacterMovementComponent->IsSwimming() && !FMath::IsNearlyZero(Value))
 	{
 		FRotator Rotation(0.f, GetControlRotation().Yaw, 0.f);
@@ -212,6 +221,7 @@ void APlayerCharacter::SwimRight(float Value)
 void APlayerCharacter::SwimUp(float Value)
 {
 	Super::SwimUp(Value);
+	
 	if (IsDiving() && !FMath::IsNearlyZero(Value))
 	{
 		FVector ForwardVector = GetActorForwardVector().GetSafeNormal2D() * 0.1f; // Ensuring that the character is facing forward
@@ -225,13 +235,25 @@ void APlayerCharacter::SwimUp(float Value)
 void APlayerCharacter::OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	
 	SpringArmComponent->TargetOffset += FVector(0.f, 0.f, HalfHeightAdjust);
 }
 
 void APlayerCharacter::OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStopSlide(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	
 	SpringArmComponent->TargetOffset -= FVector(0.f, 0.f, HalfHeightAdjust);
+}
+
+void APlayerCharacter::WallRun(float Value)
+{
+	Super::WallRun(Value);
+	
+	if (BaseCharacterMovementComponent->IsWallRunning() && FMath::IsNearlyZero(Value))
+	{
+		BaseCharacterMovementComponent->StopWallRun();
+	}
 }
 
 void APlayerCharacter::OnWallRunStart()
@@ -287,12 +309,14 @@ void APlayerCharacter::UnCrouch(bool bClientSimulation)
 void APlayerCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		
 	SpringArmComponent->TargetOffset += FVector(0.f, 0.f, HalfHeightAdjust);
 }
 
 void APlayerCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		
 	SpringArmComponent->TargetOffset -= FVector(0.f, 0.f, HalfHeightAdjust);
 }
 
@@ -310,9 +334,10 @@ void APlayerCharacter::OnStartProne(float HalfHeightAdjust, float ScaledHalfHeig
 		return;
 	}
 
+	SpringArmComponent->TargetOffset += FVector(0.f, 0.f, HalfHeightAdjust);
 	CachedSpringArmTargetOffset = SpringArmComponent->TargetOffset;
 	CachedSpringArmSocketOffset = SpringArmComponent->SocketOffset;
-	NewSpringArmTargetOffsetDelta = FVector(0.f, 0.f, HalfHeightAdjust + ProneCameraHeightOffset);
+	NewSpringArmTargetOffsetDelta = FVector(0.f, 0.f, ProneCameraHeightOffset);
 	NewSpringArmSocketOffsetDelta = FVector(ProneCameraProximityOffset, ProneCameraRightOffset, 0.f);
 
 	if (ProneCameraTimelineCurve)
@@ -335,9 +360,10 @@ void APlayerCharacter::OnStopProne(float HalfHeightAdjust, float ScaledHalfHeigh
 		return;
 	}
 
+	SpringArmComponent->TargetOffset -= FVector(0.f, 0.f, HalfHeightAdjust);
+	CachedSpringArmTargetOffset -= FVector(0.f, 0.f, HalfHeightAdjust);
 	if (!bShouldSkipProneTimeline && ProneCameraTimelineCurve)
 	{
-		NewSpringArmTargetOffsetDelta = FVector(0.f, 0.f, HalfHeightAdjust + ProneCameraHeightOffset);
 		ProneCameraTimeline.ReverseFromEnd();
 	}
 	else

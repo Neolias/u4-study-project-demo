@@ -965,6 +965,15 @@ void UCharacterEquipmentComponent::UnequipPrimaryItem()
 	bIsPrimaryItemEquipped = false;
 }
 
+void UCharacterEquipmentComponent::UpdatePrimaryItemSlot()
+{
+	uint32 SlotIndex = (uint32)EEquipmentItemSlot::PrimaryItem; 
+	if (EquipmentAmmoArray[SlotIndex] <= 0)
+	{
+		RemoveEquipmentItem(SlotIndex);
+	}
+}
+
 bool UCharacterEquipmentComponent::CanItemBeThrown(AThrowableItem* ThrowableItem)
 {
 	return IsValid(ThrowableItem) && EquipmentAmmoArray[(int32)ThrowableItem->GetAmmoType()] > 0;

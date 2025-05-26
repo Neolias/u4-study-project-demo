@@ -26,6 +26,11 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "UI/Widgets/World/CharacterProgressBarWidget.h"
 
+#if ENABLE_DRAW_DEBUG
+#include "Kismet/GameplayStatics.h"
+#include "Subsystems/DebugSubsystem.h"
+#endif
+
 AXyzBaseCharacter::AXyzBaseCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UXyzBaseCharMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
@@ -105,6 +110,11 @@ void AXyzBaseCharacter::BeginPlay()
 		AttributeSet->OnOutOfOxygenEvent.AddUObject(this, &AXyzBaseCharacter::OnOutOfOxygen);
 
 		CharacterEquipmentComponent->CreateLoadout();
+	}
+
+	if (BaseCharacterMovementComponent->IsMovingOnGround())
+	{
+		CachedDistanceToFloorZ = BaseCharacterMovementComponent->CurrentFloor.FloorDist;
 	}
 
 	SetupProgressBarWidget();
@@ -297,7 +307,7 @@ void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, fl
 	{
 		return;
 	}
-	
+
 	Character->GetCharacterMovement()->SetComponentTickInterval(MovementComponentTickInterval);
 
 	if (UWidgetComponent* Widget = Character->GetCharacterWidgetComponent())
@@ -310,7 +320,7 @@ void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, fl
 	{
 		AIController->SetActorTickInterval(AIControllerTickInterval);
 	}
-	
+
 	Character->GetMesh()->SetComponentTickEnabled(bMeshTickEnabled);
 	if (bMeshTickEnabled)
 	{
@@ -323,7 +333,7 @@ void AXyzBaseCharacter::SetSignificanceSettings(AXyzBaseCharacter* Character, fl
 
 void AXyzBaseCharacter::SetGameplayAbilityActivationFlag(EGameplayAbility Ability, EGameplayAbilityActivationFlag ActivationFlag)
 {
-	if (!IsLocallyControlled())
+	if (!IsLocallyControlled() || AbilityActivationFlags.Num() < (int32)EGameplayAbility::Max)
 	{
 		return;
 	}
@@ -428,7 +438,7 @@ void AXyzBaseCharacter::InitializeGameplayAbilityCallbacks()
 
 void AXyzBaseCharacter::TryActivateGameplayAbilitiesWithFlags()
 {
-	for (int32 i = 1; i < (int32)EGameplayAbility::Max; ++i)
+	for (int32 i = 1; i < AbilityActivationFlags.Num(); ++i)
 	{
 		EGameplayAbilityActivationFlag ActivationFlag = AbilityActivationFlags[i];
 		EGameplayAbility Ability = (EGameplayAbility)i;
@@ -1195,21 +1205,31 @@ void AXyzBaseCharacter::StopMantle()
 bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
 {
 	UWorld* World = GetWorld();
+
+#if ENABLE_DRAW_DEBUG
+	UDebugSubsystem* DebugSubSystem = UGameplayStatics::GetGameInstance(World)->GetSubsystem<UDebugSubsystem>();
+	bool bIsDebugEnabled = DebugSubSystem->IsCategoryEnabled(DebugCategoryLedgeDetection);
+	float DrawTime = 3.f;
+#else
+	bool bIsDebugEnabled = false;
+#endif
+
 	float CurrentScaledCapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	FVector CharacterBottom = GetActorLocation() - CurrentScaledCapsuleHalfHeight * FVector::UpVector;
 	ECollisionChannel CollisionChannel = ECC_Climbing;
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.bTraceComplex = true;
 	CollisionParams.AddIgnoredActor(this);
-	float LedgeGeometryTolerance = 5.f;
+	float LedgeDetectionTolerance = 5.f;
 
+	// 1. Forward sweep test
 	FHitResult ForwardHitResult;
 	float ForwardCollisionCapsuleHalfHeight = (HighMantleSettings.MaxHeight - LowMantleSettings.MinHeight) / 2;
-	FVector ForwardStartLocation = CharacterBottom + (LowMantleSettings.MinHeight + ForwardCollisionCapsuleHalfHeight - LedgeGeometryTolerance) * FVector::UpVector;
+	FVector ForwardStartLocation = CharacterBottom + (LowMantleSettings.MinHeight + ForwardCollisionCapsuleHalfHeight - LedgeDetectionTolerance) * FVector::UpVector;
 	if (BaseCharacterMovementComponent->IsSwimming())
 	{
-		ForwardCollisionCapsuleHalfHeight = (HighMantleSettings.MaxHeight - CachedCollisionCapsuleScaledHalfHeight) / 2;
-		ForwardStartLocation = CharacterBottom + (CurrentScaledCapsuleHalfHeight + ForwardCollisionCapsuleHalfHeight - LedgeGeometryTolerance) * FVector::UpVector;
+		ForwardCollisionCapsuleHalfHeight = (HighMantleSettings.MaxHeight - CurrentScaledCapsuleHalfHeight) / 2;
+		ForwardStartLocation = CharacterBottom + (CurrentScaledCapsuleHalfHeight + ForwardCollisionCapsuleHalfHeight - LedgeDetectionTolerance) * FVector::UpVector;
 	}
 	FVector ActorForwardVector = GetActorForwardVector();
 	ActorForwardVector.Z = 0.f;
@@ -1217,31 +1237,62 @@ bool AXyzBaseCharacter::DetectLedge(FLedgeDescription& LedgeDescription) const
 	FCollisionShape ForwardCollisionShape = FCollisionShape::MakeCapsule(CachedCollisionCapsuleScaledRadius, ForwardCollisionCapsuleHalfHeight);
 
 	// Ensuring that nothing is blocking in the current position, e.g. ceiling
-	if (World->OverlapBlockingTestByChannel(ForwardStartLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam))
+	bool bCeilingTestResult = World->OverlapBlockingTestByChannel(ForwardStartLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam);
+	if (bCeilingTestResult)
 	{
+		if (bIsDebugEnabled)
+		{
+			DrawDebugCapsule(World, ForwardStartLocation, CurrentScaledCapsuleHalfHeight, CachedCollisionCapsuleScaledRadius, FQuat::Identity, FColor::Red, false, DrawTime);
+		}
+
 		return false;
 	}
 
-	if (World->SweepSingleByChannel(ForwardHitResult, ForwardStartLocation, ForwardEndLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam))
+	bool bForwardTestResult = World->SweepSingleByChannel(ForwardHitResult, ForwardStartLocation, ForwardEndLocation, FQuat::Identity, CollisionChannel, ForwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam);
+	if (bIsDebugEnabled)
 	{
+		DrawLedgeDetectionDebugCapsules(ForwardHitResult, ForwardCollisionCapsuleHalfHeight, CachedCollisionCapsuleScaledRadius, ForwardStartLocation, ForwardEndLocation, bForwardTestResult, DrawTime);
+	}
+	if (bForwardTestResult)
+	{
+		// 2. Downward sweep test
+
 		FHitResult DownwardHitResult;
 		FCollisionShape DownwardCollisionShape = FCollisionShape::MakeSphere(CachedCollisionCapsuleScaledRadius);
 		FVector DownwardStartLocation = ForwardHitResult.ImpactPoint - ForwardHitResult.ImpactNormal * MantlingDepthZ;
-		DownwardStartLocation.Z = CharacterBottom.Z + HighMantleSettings.MaxHeight + LedgeGeometryTolerance;
+		DownwardStartLocation.Z = CharacterBottom.Z + HighMantleSettings.MaxHeight + LedgeDetectionTolerance;
 		FVector DownwardEndLocation = DownwardStartLocation;
-		DownwardEndLocation.Z = CharacterBottom.Z + LowMantleSettings.MinHeight - LedgeGeometryTolerance;
+		DownwardEndLocation.Z = CharacterBottom.Z + LowMantleSettings.MinHeight - LedgeDetectionTolerance;
 		if (BaseCharacterMovementComponent->IsSwimming())
 		{
-			DownwardEndLocation.Z = CharacterBottom.Z + CurrentScaledCapsuleHalfHeight - LedgeGeometryTolerance;
+			DownwardEndLocation.Z = CharacterBottom.Z + CurrentScaledCapsuleHalfHeight - LedgeDetectionTolerance;
 		}
 
-		if (World->SweepSingleByChannel(DownwardHitResult, DownwardStartLocation, DownwardEndLocation, FQuat::Identity, CollisionChannel, DownwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam))
+		bool bDownwardTestResult = World->SweepSingleByChannel(DownwardHitResult, DownwardStartLocation, DownwardEndLocation, FQuat::Identity, CollisionChannel, DownwardCollisionShape, CollisionParams, FCollisionResponseParams::DefaultResponseParam);
+		if (bIsDebugEnabled)
 		{
-			FVector OverlapTestLocation = DownwardHitResult.ImpactPoint + (CachedCollisionCapsuleScaledHalfHeight + LedgeGeometryTolerance) * FVector::UpVector;
+			DrawLedgeDetectionDebugCapsules(DownwardHitResult, CachedCollisionCapsuleScaledRadius, CachedCollisionCapsuleScaledRadius, DownwardStartLocation, DownwardEndLocation, bDownwardTestResult, DrawTime);
+		}
+		if (bDownwardTestResult)
+		{
+			// 3.Character collision test
 
-			if (!World->OverlapBlockingTestByProfile(OverlapTestLocation, FQuat::Identity, CollisionProfilePawn, GetCapsuleComponent()->GetCollisionShape(), CollisionParams))
+			if (BaseCharacterMovementComponent->IsMovingOnGround())
 			{
-				LedgeDescription.TargetLocation = OverlapTestLocation - LedgeGeometryTolerance * FVector::UpVector;
+				CachedDistanceToFloorZ = BaseCharacterMovementComponent->CurrentFloor.FloorDist;
+			}
+			FVector OverlapTestLocation = DownwardHitResult.ImpactPoint + (CurrentScaledCapsuleHalfHeight + CachedDistanceToFloorZ + LedgeDetectionTolerance) * FVector::UpVector;
+
+			bool bCollisionTestResult = World->OverlapBlockingTestByProfile(OverlapTestLocation, FQuat::Identity, CollisionProfilePawn, GetCapsuleComponent()->GetCollisionShape(), CollisionParams);
+			if (bIsDebugEnabled)
+			{
+				FColor HitColor = bCollisionTestResult ? FColor::Red : FColor::Green;
+				DrawDebugCapsule(World, OverlapTestLocation, CurrentScaledCapsuleHalfHeight, CachedCollisionCapsuleScaledRadius, FQuat::Identity, HitColor, false, DrawTime, 0, 1.f);
+			}
+
+			if (!bCollisionTestResult)
+			{
+				LedgeDescription.TargetLocation = OverlapTestLocation - LedgeDetectionTolerance;
 				LedgeDescription.TargetRotation = FVector(-ForwardHitResult.ImpactNormal.X, -ForwardHitResult.ImpactNormal.Y, 0.f).ToOrientationRotator();
 				LedgeDescription.LedgeNormal = ForwardHitResult.ImpactNormal.GetSafeNormal2D();
 				LedgeDescription.LedgeActor = DownwardHitResult.Component.Get();
@@ -1303,6 +1354,20 @@ const FMantlingSettings& AXyzBaseCharacter::GetMantlingSettings(float LedgeHeigh
 void AXyzBaseCharacter::StartMantleInternal()
 {
 	Mantle();
+}
+
+void AXyzBaseCharacter::DrawLedgeDetectionDebugCapsules(FHitResult HitResult, float TestCapsuleHalfHeight, float TestCapsuleRadius, FVector TestStartLocation, FVector TestEndLocation, bool bTestResult, float DrawTime, FColor TestColor/* = FColor::Black*/, FColor HitColor/* = FColor::Yellow*/) const
+{
+	UWorld* World = GetWorld();
+	DrawDebugCapsule(World, TestStartLocation, TestCapsuleHalfHeight, TestCapsuleRadius, FQuat::Identity, TestColor, false, DrawTime);
+	DrawDebugCapsule(World, TestEndLocation, TestCapsuleHalfHeight, TestCapsuleRadius, FQuat::Identity, TestColor, false, DrawTime);
+	DrawDebugLine(World, TestStartLocation, TestEndLocation, TestColor, false, DrawTime, 0, 1.f);
+
+	if (bTestResult)
+	{
+		DrawDebugCapsule(World, HitResult.Location, TestCapsuleHalfHeight, TestCapsuleRadius, FQuat::Identity, HitColor, false, DrawTime, -1);
+		DrawDebugPoint(World, HitResult.ImpactPoint, 15.0f, HitColor, false, DrawTime, -1);
+	}
 }
 #pragma endregion
 
@@ -1428,6 +1493,16 @@ void AXyzBaseCharacter::StopUseEnvironmentActorInternal() const
 
 #pragma region WALL RUNNING
 
+void AXyzBaseCharacter::OnWallRunStart()
+{
+	if (IsSprinting())
+	{
+		// Cancel sprinting and request it again
+		StopSprint();
+		StartSprint();
+	}
+}
+
 void AXyzBaseCharacter::JumpOffRunnableWall()
 {
 	Server_JumpOffRunnableWall();
@@ -1473,6 +1548,11 @@ void AXyzBaseCharacter::UpdateJumpApexHeight()
 
 void AXyzBaseCharacter::OnCharacterLanded(const FHitResult& Hit)
 {
+	if (BaseCharacterMovementComponent->IsMovingOnGround())
+	{
+		CachedDistanceToFloorZ = BaseCharacterMovementComponent->CurrentFloor.FloorDist;
+	}
+
 	float FallHeight = CurrentJumpApexHeight - Hit.ImpactPoint.Z;
 	if (FallHeight >= HardLandMinHeight)
 	{
@@ -1669,6 +1749,7 @@ void AXyzBaseCharacter::StartItemThrowInternal()
 			{
 				StopItemThrow();
 				SheathePrimaryItem();
+				CharacterEquipmentComponent->UpdatePrimaryItemSlot();
 			});
 		}
 
@@ -1855,7 +1936,7 @@ void AXyzBaseCharacter::StopWeaponReloadInternal() const
 
 void AXyzBaseCharacter::DelayWeaponFire(float DelayLength)
 {
-	if (GetWorld()->GetTimerManager().GetTimerRemaining(DelayWeaponFireTimerHandle) > DelayLength)
+	if (AbilityActivationFlags.Num() < (int32)EGameplayAbility::Max || GetWorld()->GetTimerManager().GetTimerRemaining(DelayWeaponFireTimerHandle) > DelayLength)
 	{
 		return;
 	}

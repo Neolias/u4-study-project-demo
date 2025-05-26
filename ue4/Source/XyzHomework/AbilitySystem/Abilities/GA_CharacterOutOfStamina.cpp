@@ -6,6 +6,7 @@
 
 UGA_CharacterOutOfStamina::UGA_CharacterOutOfStamina()
 {
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
 	AbilityType = EGameplayAbility::OutOfStamina;
 }
 

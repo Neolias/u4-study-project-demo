@@ -85,6 +85,7 @@ public:
 public:
 	virtual void OnStartSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnStopSlide(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void WallRun(float Value) override;
 	virtual void OnWallRunStart() override;
 	virtual void OnWallRunEnd() override;
 #pragma endregion

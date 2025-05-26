@@ -403,6 +403,7 @@ protected:
 	/** Actual activation logic of the gameplay ability. */
 	void StartMantleInternal();
 	virtual void OnMantle(const FMantlingSettings& MantlingSettings, const FMantlingMovementParameters& MantlingParameters) {}
+	void DrawLedgeDetectionDebugCapsules(FHitResult HitResult, float TestCapsuleHalfHeight, float TestCapsuleRadius, FVector TestStartLocation, FVector TestEndLocation, bool bTestResult, float DrawTime, FColor TestColor = FColor::Black, FColor HitColor = FColor::Yellow) const;
 
 	/** Tolerance of the sweep overlap test. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Movement|Mantling", meta = (ClampMin = 0.f, UIMin = 0.f))
@@ -416,6 +417,8 @@ protected:
 	/** Lowest ledge that the character can mantle. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Base Character|Movement|Mantling")
 	FMantlingSettings LowMantleSettings;
+
+	mutable float CachedDistanceToFloorZ = 2.f;
 #pragma endregion
 
 #pragma region ENVIRONMENT ACTORS
@@ -455,7 +458,8 @@ protected:
 #pragma region WALL RUNNING
 
 public:
-	virtual void OnWallRunStart() {}
+	virtual void WallRun(float Value) {}
+	virtual void OnWallRunStart();
 	virtual void OnWallRunEnd() {}
 	void JumpOffRunnableWall();
 	UFUNCTION(Server, Reliable)

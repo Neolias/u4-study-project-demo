@@ -1315,6 +1315,15 @@ void UXyzBaseCharMovementComponent::StartWallRun(const FHitResult& Hit)
 	BaseCharacterOwner->OnWallRunStart();
 }
 
+void UXyzBaseCharMovementComponent::StopWallRun()
+{
+	if (IsWallRunning())
+	{
+		SetPlaneConstraintNormal(FVector::ZeroVector);
+		DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod::Fall);
+	}
+}
+
 void UXyzBaseCharMovementComponent::DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod DetachFromRunnableWallMethod /*= EDetachFromRunnableWallMethod::Fall*/)
 {
 	FRotator NewRotation = BaseCharacterOwner->GetActorRotation();
@@ -1330,8 +1339,7 @@ void UXyzBaseCharMovementComponent::DetachCharacterFromRunnableWall(EDetachFromR
 				JumpDirection += Velocity.GetSafeNormal();
 				SetMovementMode(MOVE_Falling);
 
-				FVector JumpVelocity = JumpDirection * JumpOffWallRunSpeed;
-
+				FVector JumpVelocity = JumpDirection.GetSafeNormal() * JumpOffWallRunSpeed;
 				ForceTargetRotation = JumpDirection.ToOrientationRotator();
 				bForceRotation = true;
 				Launch(JumpVelocity);
@@ -1435,22 +1443,13 @@ bool UXyzBaseCharMovementComponent::AttachCharacterToRunnableWall(const FHitResu
 	return true;
 }
 
-void UXyzBaseCharMovementComponent::EndWallRun()
-{
-	if (IsWallRunning())
-	{
-		SetPlaneConstraintNormal(FVector::ZeroVector);
-		DetachCharacterFromRunnableWall(EDetachFromRunnableWallMethod::Fall);
-	}
-}
-
 bool UXyzBaseCharMovementComponent::UpdateWallRunVelocity(FHitResult& HitResult)
 {
 	FVector StartPosition = BaseCharacterOwner->GetActorLocation();
 	FVector RightVector = BaseCharacterOwner->GetActorRightVector();
 	RightVector.Z = 0.f;
 	FVector LineTraceDirection = CurrentWallRunSide == EWallRunSide::Right ? RightVector.GetSafeNormal() : -RightVector.GetSafeNormal();
-	LineTraceDirection += BaseCharacterOwner->GetActorForwardVector() * .2f; // line trace a bit ahead of the character ensuring that it won't go around corners due to rotation interpolation
+	LineTraceDirection += BaseCharacterOwner->GetActorForwardVector() * .6f; // line trace a bit ahead of the character ensuring that it won't go around corners due to rotation interpolation
 	FVector EndPosition = StartPosition + WallRunLineTraceLength * LineTraceDirection.GetSafeNormal();
 
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, StartPosition, EndPosition, ECC_WallRunning, FCollisionQueryParams::DefaultQueryParam))
@@ -1461,7 +1460,7 @@ bool UXyzBaseCharMovementComponent::UpdateWallRunVelocity(FHitResult& HitResult)
 
 		if (Side != CurrentWallRunSide)
 		{
-			EndWallRun();
+			StopWallRun();
 			return false;
 		}
 
@@ -1470,7 +1469,7 @@ bool UXyzBaseCharMovementComponent::UpdateWallRunVelocity(FHitResult& HitResult)
 	}
 	else
 	{
-		EndWallRun();
+		StopWallRun();
 		return false;
 	}
 	return true;
@@ -1495,7 +1494,7 @@ void UXyzBaseCharMovementComponent::PhysWallRun(float DeltaTime, int32 Iteration
 	WallRunElapsedTime += DeltaTime;
 	if (WallRunElapsedTime >= WallRunMaxDuration)
 	{
-		EndWallRun();
+		StopWallRun();
 	}
 }
 #pragma endregion

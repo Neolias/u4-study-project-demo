@@ -11,9 +11,12 @@
 #include "XyzHomeworkTypes.h"
 #include "Actors/Projectiles/ExplosiveProjectile.h"
 #include "Components/DecalComponent.h"
-#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+
+#if ENABLE_DRAW_DEBUG
+#include "Kismet/GameplayStatics.h"
 #include "Subsystems/DebugSubsystem.h"
+#endif
 
 UWeaponMuzzleComponent::UWeaponMuzzleComponent()
 {
@@ -141,7 +144,7 @@ FVector UWeaponMuzzleComponent::ShootHitScan(FVector ViewPointLocation, FRotator
 
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, ViewPointLocation, EndLocation, ECC_Bullet, CollisionQueryParams))
 	{
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT) && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 		const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 		if (DebugSubsystem->IsCategoryEnabled(DebugCategoryRangedWeapon))
 		{
@@ -158,7 +161,7 @@ FVector UWeaponMuzzleComponent::ShootHitScan(FVector ViewPointLocation, FRotator
 
 void UWeaponMuzzleComponent::ProcessHit(FVector MovementDirection, const FHitResult& HitResult) const
 {
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT) && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 	if (DebugSubsystem->IsCategoryEnabled(DebugCategoryRangedWeapon))
 	{

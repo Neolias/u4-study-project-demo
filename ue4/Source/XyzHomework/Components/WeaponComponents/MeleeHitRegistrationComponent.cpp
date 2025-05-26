@@ -4,8 +4,11 @@
 
 #include "DrawDebugHelpers.h"
 #include "XyzHomeworkTypes.h"
+
+#if ENABLE_DRAW_DEBUG
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/DebugSubsystem.h"
+#endif
 
 UMeleeHitRegistrationComponent::UMeleeHitRegistrationComponent()
 {
@@ -41,7 +44,7 @@ void UMeleeHitRegistrationComponent::ProcessHitRegistration()
 	CollisionParams.AddIgnoredActor(CachedPawn.Get());
 	bool bHasHit = World->SweepSingleByChannel(HitResult, PreviousComponentLocation, CurrentComponentLocation, FQuat::Identity, ECC_Melee, FCollisionShape::MakeSphere(SphereRadius), CollisionParams, FCollisionResponseParams::DefaultResponseParam);
 
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT) && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	const UDebugSubsystem* DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UDebugSubsystem>();
 	if (DebugSubsystem->IsCategoryEnabled(DebugCategoryMeleeWeapon))
 	{

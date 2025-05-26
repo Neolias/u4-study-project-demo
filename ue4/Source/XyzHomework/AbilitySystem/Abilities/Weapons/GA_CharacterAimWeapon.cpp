@@ -19,5 +19,5 @@ bool UGA_CharacterAimWeapon::CanActivateAbility(const FGameplayAbilitySpecHandle
 	}
 
 	const AXyzBaseCharacter* BaseCharacter = StaticCast<AXyzBaseCharacter*>(ActorInfo->AvatarActor.Get());
-	return BaseCharacter && IsValid(BaseCharacter->GetCharacterEquipmentComponent()->GetCurrentRangedWeapon()) && BaseCharacter->GetCharacterEquipmentComponent()->GetCurrentRangedWeapon()->CanAimWithThisItem();
+	return BaseCharacter && IsValid(BaseCharacter->GetCharacterEquipmentComponent()->GetCurrentEquipmentItem()) && BaseCharacter->GetCharacterEquipmentComponent()->GetCurrentEquipmentItem()->CanAimWithThisItem();
 }

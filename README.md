@@ -28,7 +28,7 @@ Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.co
 
 ## Controls
 *Movement:*  
-**WASD:** Movement (Walking, Swimming, Climbing ladders)  
+**WASD:** Walking, Swimming, Climbing ladders, Wall running (Hold 'W' to stay attached to walls)  
 **Shift:** Sprint  
 **Shift + Ctrl (or Ctrl if sprinting):** Slide  
 **Ctrl:** Crouch / Swim Down  
@@ -58,7 +58,8 @@ Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.co
 **ESC:** Quit the Game
 
 ## Console Commands
-*EnableDebugCategory CharacterAttributes 1*  
-*EnableDebugCategory AIAttributes 1*  
+*EnableDebugCategory LedgeDetection 1*  
 *EnableDebugCategory RangedWeapon 1*  
 *EnableDebugCategory MeleeWeapon 1*  
+*EnableDebugCategory CharacterAttributes 1*  
+*EnableDebugCategory AIAttributes 1*  

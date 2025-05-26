@@ -99,6 +99,7 @@ void AXyzPlayerController::SetupInputComponent()
 	InputComponent->BindAxis("SwimUp", this, &AXyzPlayerController::SwimUp);
 	InputComponent->BindAxis("ClimbLadderUp", this, &AXyzPlayerController::ClimbLadderUp);
 	InputComponent->BindAction("JumpOffRunnableWall", EInputEvent::IE_Pressed, this, &AXyzPlayerController::JumpOffRunnableWall);
+	InputComponent->BindAxis("WallRun", this, &AXyzPlayerController::WallRun);
 	InputComponent->BindAction("Slide", EInputEvent::IE_Pressed, this, &AXyzPlayerController::Slide);
 	InputComponent->BindAction("ReloadLevel", EInputEvent::IE_Pressed, this, &AXyzPlayerController::ReloadLevel);
 	InputComponent->BindAction("Fire", EInputEvent::IE_Pressed, this, &AXyzPlayerController::StartWeaponFire);
@@ -429,6 +430,15 @@ void AXyzPlayerController::JumpOffRunnableWall()
 	if (IsValid(BaseCharacter))
 	{
 		BaseCharacter->JumpOffRunnableWall();
+	}
+}
+
+void AXyzPlayerController::WallRun(float Value)
+{
+	AXyzBaseCharacter* BaseCharacter = CachedBaseCharacter.Get();
+	if (IsValid(BaseCharacter))
+	{
+		BaseCharacter->WallRun(Value);
 	}
 }
 
