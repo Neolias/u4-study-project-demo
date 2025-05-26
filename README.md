@@ -7,10 +7,10 @@ Hello! I started working on this study project as a part of an Unreal Engine 4 c
 Implemented features:
 - Character movement
 - Character camera and animations
-- Character abilities integrated and replicated using GAS
+- Character abilities coordinated and replicated using GAS
 - Equipment and inventory systems
 - Player HUD and inventory/equipment UI
-- Full character replication and its inventory
+- Full replication of characters and their inventories
 - Simple turret and character AI
 - Game saves and level streaming
 - Online subsystem
@@ -28,7 +28,7 @@ Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.co
 
 ## Controls
 *Movement:*  
-**WASD:** Walking, Swimming, Climbing ladders, Wall running (Hold 'W' to stay attached to walls)  
+**WASD:** Walking, Swimming, Climbing Ladders, Wall Running (Hold 'W' to stay attached to walls)  
 **Shift:** Sprint  
 **Shift + Ctrl (or Ctrl if sprinting):** Slide  
 **Ctrl:** Crouch / Swim Down  
@@ -40,22 +40,22 @@ Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.co
 **LMB:** Shoot (Can shoot only while aiming) / Primary Melee Attack  
 **Scroll Wheel:** Change Weapons  
 **Q:** Toggle Primary Item (Grenade)  
-**Q + LMB (or LMB if equipped):** Throw Grenade  
-**E:** Change Weapon Mode (Currently only Rifle has modes)  
+**Q + LMB (or just LMB if equipped):** Throw Grenade  
+**E:** Change Weapon Mode (Currently only the assault rifle has modes)  
 **R:** Reload Current Weapon  
 
 *UI:*  
-**F:** Use Smart Object (Pickup items, Doors) 
+**F:** Use Smart Object (Pickup items, Doors)  
 **I:** Toggle Inventory  
 **X:** Radial Menu  
-**TAB:** Online Sessions Menu
+**Tab:** Online Sessions Menu
 **Z:** Toggle Mouse Cursor  
 
 *Other:*  
 **L:** Reload Current Level (Only in a standalone game)  
 **T:** Quick Save (Only in a standalone game)  
 **Y:** Quick Load (Only in a standalone game)  
-**ESC:** Quit the Game
+**Esc:** Quit Game
 
 ## Console Commands
 *EnableDebugCategory LedgeDetection 1*  
