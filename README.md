@@ -23,8 +23,13 @@ Code samples:
 [EquipmentComponent.h](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/CharacterComponents/CharacterEquipmentComponent.h)  
 [EquipmentComponent.cpp](https://github.com/Neolias/u4-study-project-demo/blob/main/ue4/Source/XyzHomework/Components/CharacterComponents/CharacterEquipmentComponent.cpp)  
 
-See the latest debug build here: [Releases]( https://github.com/Neolias/ue4-study-project-demo/releases)  
+See the latest debug build here: [Releases](https://github.com/Neolias/ue4-study-project-demo/releases)  
 Old recording showcasing some of the mechanics: [YouTube](https://www.youtube.com/watch?v=TFxdaA3Rt28)
+
+## Doxygen Documentation
+[https://neolias.github.io/ue4-study-project-demo/html/annotated.html](https://neolias.github.io/ue4-study-project-demo/html/annotated.html)  
+
+[![Snapshot](https://github.com/user-attachments/assets/8c230ff8-9467-4bb1-aed1-d118d2320cbd)](https://neolias.github.io/ue4-study-project-demo/html/annotated.html)  
 
 ## Controls
 *Movement:*  
