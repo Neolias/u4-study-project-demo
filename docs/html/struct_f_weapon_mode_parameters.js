@@ -1,0 +1,28 @@
+var struct_f_weapon_mode_parameters =
+[
+    [ "GENERATED_BODY", "struct_f_weapon_mode_parameters.html#a1a71684102c1e98da5132f9d6c8b6e47", null ],
+    [ "AmmoPerShot", "struct_f_weapon_mode_parameters.html#a9ebd818a7e94f4b11a298cea7fdb31dd", null ],
+    [ "AmmoType", "struct_f_weapon_mode_parameters.html#a4fb13359c5d850c3e0edb25493980874", null ],
+    [ "BulletTraceFX", "struct_f_weapon_mode_parameters.html#a73cc9b2d97b79a3005a8fe43e57fca79", null ],
+    [ "CharacterReloadAnimMontage", "struct_f_weapon_mode_parameters.html#a42faa7326cfb55cbb1f63015bdb16edb", null ],
+    [ "DamageTypeClass", "struct_f_weapon_mode_parameters.html#a02ad6520f756f487bc58081fc035ce4d", null ],
+    [ "DefaultDecalInfo", "struct_f_weapon_mode_parameters.html#a3f76a11360258d0fb36628f954221fc2", null ],
+    [ "FireMode", "struct_f_weapon_mode_parameters.html#a380340da53a802eeff06f6d9f5894fa1", null ],
+    [ "FireRate", "struct_f_weapon_mode_parameters.html#a24fe117a9859098929c4d82d37f111d4", null ],
+    [ "FirstShotDelay", "struct_f_weapon_mode_parameters.html#aee0ee9c570a5a2470f5721e9ea7776e2", null ],
+    [ "HitRegistrationType", "struct_f_weapon_mode_parameters.html#ab79aa481aa2b87e78fce49d3f564b678", null ],
+    [ "IronsightsCharacterReloadAnimMontage", "struct_f_weapon_mode_parameters.html#a7e9a8724e297b69985813057382da749", null ],
+    [ "IronsightsWeaponReloadAnimMontage", "struct_f_weapon_mode_parameters.html#a24f49acb1d6e132c375c649bc9c42866", null ],
+    [ "MagazineSize", "struct_f_weapon_mode_parameters.html#a9e38fcf3a8cbf805904ebdaa96594714", null ],
+    [ "MaxBulletSpreadAngle", "struct_f_weapon_mode_parameters.html#a6874d9706d0384c0a1edcf11e2e67454", null ],
+    [ "MuzzleFlashFX", "struct_f_weapon_mode_parameters.html#a6e260e0001e61ca68eeed90bcf41b913", null ],
+    [ "ProjectileClass", "struct_f_weapon_mode_parameters.html#a4426807f9b26e0292448ec2ad3425a32", null ],
+    [ "ReloadEndSectionName", "struct_f_weapon_mode_parameters.html#acee4dee72e9fbcdf98e811d1fd6f5935", null ],
+    [ "ReloadLoopStartSectionName", "struct_f_weapon_mode_parameters.html#ab137695c90da7790da950396b0116d34", null ],
+    [ "ReloadType", "struct_f_weapon_mode_parameters.html#a7eb454220be1bc494d47900563888f2b", null ],
+    [ "TraceEndParamName", "struct_f_weapon_mode_parameters.html#a023373c074c3dad34581170ebea35e97", null ],
+    [ "WeaponDamageFallOff", "struct_f_weapon_mode_parameters.html#a317815c460ca1c121b223f814992aeaf", null ],
+    [ "WeaponMaxDamage", "struct_f_weapon_mode_parameters.html#a32f8c6065f4b2b6e30e5629c3b0bdf5e", null ],
+    [ "WeaponRange", "struct_f_weapon_mode_parameters.html#a6f25099e9fdff68baa9756306ffb713a", null ],
+    [ "WeaponReloadAnimMontage", "struct_f_weapon_mode_parameters.html#ac379e1e47a372d95f6f53892a8160899", null ]
+];
