@@ -968,7 +968,7 @@ void UCharacterEquipmentComponent::UnequipPrimaryItem()
 void UCharacterEquipmentComponent::UpdatePrimaryItemSlot()
 {
 	uint32 SlotIndex = (uint32)EEquipmentItemSlot::PrimaryItem; 
-	if (EquipmentAmmoArray[SlotIndex] <= 0)
+	if (EquipmentAmmoArray.Num() != 0 && EquipmentAmmoArray[SlotIndex] <= 0)
 	{
 		RemoveEquipmentItem(SlotIndex);
 	}

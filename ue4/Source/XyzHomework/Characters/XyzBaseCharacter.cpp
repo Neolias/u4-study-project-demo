@@ -1809,13 +1809,6 @@ void AXyzBaseCharacter::StartAimingInternal()
 		OnAimingEvent.Broadcast(true);
 	}
 
-	// Cancel fire and try to restart it
-	if (IsFiringWeapon())
-	{
-		StopWeaponFire();
-		StartWeaponFire();
-	}
-
 	OnStartAiming();
 }
 
@@ -1829,6 +1822,13 @@ void AXyzBaseCharacter::StopAimingInternal()
 	if (OnAimingEvent.IsBound())
 	{
 		OnAimingEvent.Broadcast(false);
+	}
+
+	// Cancel fire and try to restart it
+	if (IsFiringWeapon())
+	{
+		StopWeaponFire();
+		StartWeaponFire();
 	}
 
 	OnStopAiming();

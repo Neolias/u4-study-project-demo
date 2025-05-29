@@ -6,7 +6,7 @@
 #include "Characters/PlayerCharacter.h"
 #include "FPPlayerCharacter.generated.h"
 
-/** DEPRECATED. First-person character class that mainly manages the first-person camera. */
+/** @deprecated First-person character class that mainly manages the first-person camera. */
 UCLASS()
 class XYZHOMEWORK_API AFPPlayerCharacter : public APlayerCharacter
 {
@@ -24,7 +24,7 @@ protected:
 
 private:
 	bool IsFPMontagePlaying() const;
-	
+
 #pragma region CAMERA
 
 protected:

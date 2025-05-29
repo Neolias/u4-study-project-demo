@@ -6,7 +6,7 @@
 #include "XyzBaseCharacterAnimInstance.h"
 #include "FPPlayerAnimInstance.generated.h"
 
-/** DEPRECATED */
+/** @deprecated */
 UCLASS()
 class XYZHOMEWORK_API UFPPlayerAnimInstance : public UXyzBaseCharacterAnimInstance
 {

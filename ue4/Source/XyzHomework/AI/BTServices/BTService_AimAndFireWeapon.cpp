@@ -31,13 +31,20 @@ void UBTService_AimAndFireWeapon::TickNode(UBehaviorTreeComponent& OwnerComp, ui
 
 	if (UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent())
 	{
+		bool bCanSeeTarget = Blackboard->GetValueAsBool(AICharacterBTCanSeeTargetName);
+		// Clearing cached blackboard keys if the target is invalid
+		if (bCanSeeTarget && !Blackboard->GetValueAsObject(AICharacterBTCurrentTargetName))
+		{
+			Blackboard->ClearValue(AICharacterBTDistanceToTargetName);
+			Blackboard->ClearValue(AICharacterBTCanSeeTargetName);
+		}
+
 		float DistanceToTarget = Blackboard->GetValueAsFloat(AICharacterBTDistanceToTargetName);
 		bool bIsInRange = DistanceToTarget > MinFireRange && DistanceToTarget <= MaxFireRange;
-		bool bCanSeeTarget = Blackboard->GetValueAsBool(AICharacterBTCanSeeTargetName);
 		BaseCharacter->bUseControllerRotationYaw = bCanSeeTarget;
 		bool bIsWeaponFireRequested = Blackboard->GetValueAsBool(AICharacterBTWeaponFireRequestedName);
 
-		if (bIsInRange && bCanSeeTarget)
+		if (bCanSeeTarget && bIsInRange)
 		{
 			if (bIsWeaponFireRequested && !BaseCharacter->IsFiringWeapon())
 			{
